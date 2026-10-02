@@ -2,6 +2,10 @@
 
 # ZIRU Jev Codex Router
 
+![preview](docs/assets/badges/preview.svg) ![platform](docs/assets/badges/platform.svg) ![license](docs/assets/badges/license.svg) ![node](docs/assets/badges/node.svg) ![python](docs/assets/badges/python.svg) ![stars](docs/assets/badges/stars.svg)
+
+[![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
+
 작업의 요구 품질과 실패 위험에 맞춰 모델과 effort를 선택하고, 구현·검증·리뷰·수정을 포함한 전체 토큰 절감을 목표로 하는 라우터입니다.
 
 **비공개 preview · macOS Codex Desktop** · [English](README.md)
@@ -9,6 +13,82 @@
 ## 동작 예시와 기능
 
 선택적 표시를 켜면 첫 응답 텍스트에 `[gpt-6.1-sol / high]`처럼 실제 제공된 모델과 effort를 표시합니다. 추론 시작 전 표시를 보장하지 않으며 구조화 JSON은 제외합니다. 깨끗한 연속 작업은 제한된 lease로 판단을 재사용하고 새 사용자 요청·오류·압축·도구 체인 변경 시 다시 판단합니다.
+
+
+### 프롬프트 → 응답 예제
+
+아래는 **형식을 설명하는 예제이며 실제 실행 기록이나 벤치마크가 아닙니다.**
+문맥·정책·도구 결과에 따라 모델과 effort가 달라질 수 있습니다. 표시를 켜면
+`[모델 / effort]`가 나오며, 그 뒤 본문은 Codex가 작성하므로 고정된 양식이
+아닙니다. 라우터가 판단 이유 전체를 자동으로 설명하는 것은 아닙니다.
+
+<details open>
+<summary>1. 작고 범위가 분명한 수정</summary>
+
+**프롬프트**
+```text
+저장 버튼을 변경사항 저장으로 바꿔줘. 해당 화면만 확인해줘.
+```
+**응답 예시**
+```text
+[gpt-6-luna / low]
+
+버튼 문구를 수정하고 해당 화면의 표시를 확인하겠습니다.
+```
+</details>
+
+<details>
+<summary>2. 원인 분석과 회귀 검사가 필요한 디버깅</summary>
+
+**프롬프트**
+```text
+이 API가 가끔 중복 레코드를 반환해. 원인을 찾고 실패하는 회귀 검사를
+먼저 만든 뒤 수정하고 관련 검사를 실행해줘.
+```
+**응답 예시**
+```text
+[gpt-6.1-sol / high]
+
+중복 반환을 재현하고 쿼리·재시도 경로를 추적한 뒤 회귀 검사로 수정 결과를 확인하겠습니다.
+```
+</details>
+
+<details>
+<summary>3. 독립적인 최종 코드 리뷰</summary>
+
+**프롬프트**
+```text
+완성된 인증 변경을 정확성과 보안 관점에서 리뷰해줘. 심각도별 발견 사항,
+파일 위치, 검증이 부족한 부분을 알려줘.
+```
+**응답 예시**
+```text
+[gpt-6-astra / high]
+
+인증 경계와 변경된 검사·실패 경로를 확인하고 수정할 사항과 검증 공백을 보고하겠습니다.
+```
+</details>
+
+<details>
+<summary>4. Ultra를 직접 선택하도록 권고하는 경우</summary>
+
+**프롬프트**
+```text
+서로 독립적인 세 하위 시스템의 장애 근거를 조사하고 비교해줘.
+독립적인 병렬 조사가 이 작업에 실질적으로 도움이 될지도 판단해줘.
+```
+**응답 예시**
+```text
+[gpt-6-astra / max]
+
+[Jev Ultra 추천] 독립적인 조사·가설 검증을 병렬로 나누면 도움이 될 수 있습니다. Codex 모델 메뉴에서 GPT-6 Astra의 Ultra를 직접 선택하세요. 현재 Ultra는 실행 중이 아닙니다. 지원 클라이언트와 위임 권한이 필요하며, 로컬 Codex에서는 독립 작업의 하위 에이전트 위임을 명시적으로 요청하세요. 토큰 사용량이 늘 수 있습니다.
+
+먼저 각 하위 시스템의 조사가 독립적인지 확인하겠습니다.
+```
+권고만으로 모델이 바뀌거나 자동 위임이 켜지지는 않습니다. 기술적 Jev 오류의
+fallback도 `[gpt-6.1-sol / high]`로 표시되므로, prefix만으로 정상 선택과
+fallback을 구분할 수는 없습니다.
+</details>
 
 ## 빠른 설치와 첫 실행
 
@@ -161,3 +241,9 @@ launchctl bootout "gui/$(id -u)/com.thibaultsaintjean.jev-router"
 사용하되, 다른 로컬 클라이언트가 그 세션을 쓰는 경우 영향을 확인하세요.
 다른 등록 클라이언트가 남으면 공유 서비스는 보존됩니다. 직접 Codex를 재시작하고
 native 모델 선택과 `router status`로 제거를 확인합니다. 키·로그·백업은 삭제하지 않습니다.
+
+## 스타 현황
+
+GitHub API에서 확인한 **스타 0개**, 기준일 2026-10-01 (America/Los_Angeles)입니다. 초기 시점의 정적 그래프이며 성장 추세나 자동 갱신을 뜻하지 않습니다. CI 배지는 실제 workflow에 연결되지만 private 접근 제한으로 원격 이미지가 보이지 않을 수 있습니다.
+
+![GitHub stars snapshot](docs/assets/star-history.svg)

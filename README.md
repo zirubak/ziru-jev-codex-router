@@ -2,6 +2,10 @@
 
 # ZIRU Jev Codex Router
 
+![preview](docs/assets/badges/preview.svg) ![platform](docs/assets/badges/platform.svg) ![license](docs/assets/badges/license.svg) ![node](docs/assets/badges/node.svg) ![python](docs/assets/badges/python.svg) ![stars](docs/assets/badges/stars.svg)
+
+[![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
+
 Choose a model and reasoning effort for the task's quality requirements and failure risk, aiming to reduce total tokens across implementation, verification, review and rework.
 
 **Private preview · macOS Codex Desktop** · [한국어](README.ko.md)
@@ -15,6 +19,84 @@ An optional answer signature shows the served route, for example:
 ```
 
 The signature appears with the first assistant text, not before upstream reasoning begins. Structured JSON output is excluded. Routing can reuse a bounded decision lease for clean continuations; new user turns, errors, compaction and changed tool chains trigger reassessment.
+
+
+### Prompt → response examples
+
+These are **illustrative examples, not recorded benchmark runs**. The displayed
+route can differ with context, policy and tool results. Enable the signature to
+see `[model / effort]`; the answer body is written by Codex, not a fixed router
+template. The router does not automatically publish its full decision rationale.
+
+<details open>
+<summary>1. Small, bounded change</summary>
+
+**Prompt**
+```text
+Rename the Save button to Save changes. Check the affected UI only.
+```
+**Illustrative response**
+```text
+[gpt-6-luna / low]
+
+I’ll update the button label and check the affected view.
+```
+</details>
+
+<details>
+<summary>2. Debugging with regression verification</summary>
+
+**Prompt**
+```text
+This endpoint sometimes returns duplicate records. Find the cause,
+add a failing regression test, then fix it and run the affected tests.
+```
+**Illustrative response**
+```text
+[gpt-6.1-sol / high]
+
+I’ll reproduce the duplicate result, trace the query and retry paths,
+and verify the fix with a regression test.
+```
+</details>
+
+<details>
+<summary>3. Independent final review</summary>
+
+**Prompt**
+```text
+Review the completed authentication change for correctness and security.
+Report findings by severity with file references and verification gaps.
+```
+**Illustrative response**
+```text
+[gpt-6-astra / high]
+
+I’ll inspect the authentication boundaries, changed tests and failure paths,
+then report actionable findings and remaining verification gaps.
+```
+</details>
+
+<details>
+<summary>4. Manual Ultra advice</summary>
+
+**Prompt**
+```text
+Investigate three independent subsystems and compare their failure evidence.
+Would independent parallel exploration materially help this investigation?
+```
+**Illustrative response** (the advisory is currently rendered in Korean)
+```text
+[gpt-6-astra / max]
+
+[Jev Ultra 추천] 독립적인 조사·가설 검증을 병렬로 나누면 도움이 될 수 있습니다. Codex 모델 메뉴에서 GPT-6 Astra의 Ultra를 직접 선택하세요. 현재 Ultra는 실행 중이 아닙니다. 지원 클라이언트와 위임 권한이 필요하며, 로컬 Codex에서는 독립 작업의 하위 에이전트 위임을 명시적으로 요청하세요. 토큰 사용량이 늘 수 있습니다.
+
+I’ll first check whether the subsystem investigations are independent.
+```
+The recommendation does not switch the model or enable delegation. A technical
+Jev failure instead uses `[gpt-6.1-sol / high]`; the prefix alone cannot tell
+you whether Sol/high was selected normally or used as fallback.
+</details>
 
 ## Install and first run
 
@@ -157,3 +239,9 @@ ZIRU extends the upstream implementation with research-informed model and effort
 ## From ZIRU
 
 Read more about AI-assisted development and the experiments behind this project on [ZIRU’s Medium blog](https://medium.com/@jh.baek.sd). Follow the blog for longer explanations alongside the code and its evidence.
+
+## Stars snapshot
+
+GitHub API snapshot: **0 stars**, checked 2026-10-01 (America/Los_Angeles). This is a static initial snapshot, not a growth trend. It does not auto-update. The CI badge links to the actual workflow; private-repository access restrictions may prevent its remote image from loading.
+
+![GitHub stars snapshot](docs/assets/star-history.svg)
