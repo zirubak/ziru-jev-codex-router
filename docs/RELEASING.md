@@ -40,3 +40,15 @@ Branch protections and rulesets are repository settings, not implied by this
 document. Agree stable check names and merge policy before enforcing them;
 read back the actual GitHub settings before claiming protection. Do not make a
 new or failing platform check a required merge gate without qualification.
+
+## Deferred until an explicitly authorized public release
+
+Owner decision, 2026-10-01 (America/Los_Angeles): defer Star History setup until
+this repository is made public. Do not request or create a token for it now.
+When the owner explicitly requests public release, check Star History's current
+integration/authentication requirements, configure the supported README embed,
+and verify that the actual chart renders in both READMEs. Do not assume that
+changing visibility alone resolves the previously observed HTTP 403. Never put
+raw access tokens in README files, image URLs, commits or chat. This note is a
+future release checklist item, not authorization to change repository visibility
+or create credentials automatically.
