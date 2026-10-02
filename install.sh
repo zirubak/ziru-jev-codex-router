@@ -19,6 +19,7 @@ codex_home=${CODEX_HOME:-$HOME/.codex}
 state_dir=${MODEL_ROUTER_STATE_DIR:-${CODEX_ROUTER_STATE_DIR:-${KIMI_CODEX_STATE_DIR:-$codex_home/codex-router}}}
 export CODEX_HOME=$codex_home
 export CODEX_ROUTER_STATE_DIR=$state_dir
+export CODEX_ROUTER_ISOLATED=1
 umask 077
 
 usage() {
@@ -32,7 +33,7 @@ Install Jev Codex Router from the embedded router fork.
   -h, --help      Show this help.
 
 The full install preserves any configured router providers, adds or updates the
-local Jev provider and jev/auto model, provisions its protected loopback
+local Jev provider and both Jev models, provisions its protected loopback
 credential, enables native ChatGPT sharing, installs both launchd services, and
 runs the end-to-end smoke test.
 EOF
@@ -76,6 +77,9 @@ fi
 "$repo_dir/install.sh" --prepare-only
 transaction=$repo_dir/server/install_transaction.py
 backup=$(python3 "$transaction" begin)
+# A full root reinstall deliberately transfers checkout ownership. Authorize
+# its early catalog writes only after the previous runtime is snapshotted.
+export MODEL_ROUTER_ALLOW_FOREIGN_STATE=1
 rollback_install() {
   result=$?
   trap - EXIT HUP INT TERM
@@ -126,13 +130,18 @@ node "$repo_dir/server/configure-auth.mjs"
 "$router_cli" chatgpt-session enable
 "$router_cli" refresh-catalog
 "$router_dir/bin/control" picker set jev/auto show
+"$router_dir/bin/control" picker set jev/manual show
+# The gateway registry is loaded at startup. Restart after final model/auth
+# publication so advertised new routes are immediately executable.
+"$router_dir/bin/control" service restart
 
 CODEX_HOME=$codex_home CODEX_ROUTER_STATE_DIR=$state_dir \
   bash "$repo_dir/server/install-service.sh"
 python3 "$repo_dir/server/smoke.py"
 python3 "$transaction" validate
+python3 "$transaction" validate-isolation
 python3 "$transaction" commit "$backup"
 trap - EXIT HUP INT TERM
 
 printf '\nJev Codex Router is installed from %s.\n' "$repo_dir"
-printf 'Fully quit and reopen Codex, then select "Jev Codex Router".\n'
+printf 'Official Codex remains direct. Select Jev explicitly with: codex -p jev\n'

@@ -111,7 +111,7 @@ class PlanModeHttp(unittest.TestCase):
             self.call(payload_for(history, reasoning={"effort": "low"}))
         self.assertEqual(Edge.payloads[-1]["input"][1]["reasoning"]["effort"], "high")
 
-    def test_plan_quota_retry_restores_original_update(self) -> None:
+    def test_plan_quota_retry_reconciles_update_preserves_metadata(self) -> None:
         attempts: list[dict] = []
 
         def forward(
@@ -132,7 +132,7 @@ class PlanModeHttp(unittest.TestCase):
             self.call(payload_for(history, reasoning={"effort": "low"}))
         self.assertEqual(len(attempts), 2)
         self.assertEqual(attempts[0]["input"][1]["reasoning"], {"effort": "max", "summary": "auto"})
-        self.assertEqual(attempts[1]["input"][1]["reasoning"], {"effort": "low", "summary": "auto"})
+        self.assertEqual(attempts[1]["input"][1]["reasoning"], {"effort": "max", "summary": "auto"})
         self.assertEqual(history[1]["reasoning"]["effort"], "low")
         for attempt in attempts:
             guidance = [item for item in attempt["input"] if "<jev_planning_guidance>" in str(item)]

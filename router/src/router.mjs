@@ -1047,7 +1047,7 @@ function routedSearchCompatibility(payload, route) {
 // canonical replay: aging or windowing it here would make the Jev projection
 // accidentally become the only context available to the executing model.
 function requiresCanonicalReplay(route) {
-  return route?.slug === "jev/auto";
+  return route?.slug === "jev/auto" || route?.slug === "jev/manual";
 }
 
 function inputHasWebSearchHistory(input) {

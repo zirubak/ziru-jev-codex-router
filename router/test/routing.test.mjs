@@ -9411,7 +9411,8 @@ test("a long routed conversation is replayed as a window instead of in full", as
   }
 });
 
-test("jev/auto receives the complete canonical replay for its executing model", async () => {
+for (const mode of ["auto", "manual"]) {
+test(`jev/${mode} receives the complete canonical replay for its executing model`, async () => {
   const gatewayBodies = [];
   const gateway = await mockServer(async (request, response) => {
     gatewayBodies.push(await bodyJson(request));
@@ -9442,9 +9443,9 @@ test("jev/auto receives the complete canonical replay for its executing model", 
   writeFileSync(userModelsFile, `${JSON.stringify({
     version: 1,
     models: [{
-      slug: "jev/auto",
-      gatewayModel: "jev-auto",
-      upstreamModel: "auto",
+      slug: `jev/${mode}`,
+      gatewayModel: `jev-${mode}`,
+      upstreamModel: mode,
       provider: "jev",
       listed: true,
       displayName: "Jev Codex Router",
@@ -9495,7 +9496,7 @@ test("jev/auto receives the complete canonical replay for its executing model", 
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "jev/auto",
+        model: `jev/${mode}`,
         stream: false,
         prompt_cache_key: promptCacheKey,
         input,
@@ -9503,7 +9504,7 @@ test("jev/auto receives the complete canonical replay for its executing model", 
     });
     assert.equal(response.status, 200, await response.text());
     assert.equal(gatewayBodies.length, 1);
-    assert.equal(gatewayBodies[0].model, "jev-auto");
+    assert.equal(gatewayBodies[0].model, `jev-${mode}`);
     assert.equal(gatewayBodies[0].prompt_cache_key, promptCacheKey);
     assert.deepEqual(gatewayBodies[0].input, input);
 
@@ -9518,6 +9519,7 @@ test("jev/auto receives the complete canonical replay for its executing model", 
     rmSync(testRoot, { recursive: true, force: true });
   }
 });
+}
 
 test("native and Responses routes keep tool-search pairs across the conversation window", async () => {
   const forwarded = [];

@@ -2023,11 +2023,17 @@ async function handleFailover(action, ...rest) {
     const estimated = Number(option("--estimated-tokens"));
     const limit = Number(option("--limit") || 2);
     const requiredSearchMode = option("--search-mode");
+    const requiredEffort = option("--effort");
+    if (rest.includes("--effort") &&
+      !["low", "medium", "high", "xhigh", "max"].includes(requiredEffort)) {
+      throw new Error("Manual effort must be low, medium, high, xhigh or max.");
+    }
     const candidates = await liveJevFallbackCandidates({
       ...(Number.isFinite(estimated) && estimated > 0 ? { estimatedTokens: estimated } : {}),
       needsImage: rest.includes("--image"),
       needsMultiAgentV2: rest.includes("--multi-agent-v2"),
       ...(requiredSearchMode ? { requiredSearchMode } : {}),
+      ...(requiredEffort ? { requiredEffort } : {}),
       hasSearchHistory: rest.includes("--search-history"),
       limit,
     });

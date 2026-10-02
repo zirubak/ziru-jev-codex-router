@@ -56,6 +56,15 @@ class EmbeddedRouterLayout(unittest.TestCase):
             payload = json.loads(user_models.read_text())
             slugs = [model["slug"] for model in payload["models"]]
             self.assertEqual(slugs.count("jev/auto"), 1)
+            self.assertEqual(slugs.count("jev/manual"), 1)
+            models = {model["slug"]: model for model in payload["models"]}
+            self.assertEqual(models["jev/auto"]["displayName"], "Jev Codex Router by Auto")
+            self.assertEqual(models["jev/auto"]["defaultEffort"], "auto")
+            self.assertEqual(models["jev/auto"]["reasoningLevels"],
+                             [{"effort": "auto", "description": "Auto"}])
+            self.assertEqual(models["jev/manual"]["displayName"], "Jev Codex Router")
+            self.assertEqual([level["effort"] for level in models["jev/manual"]["reasoningLevels"]],
+                             ["low", "medium", "high", "xhigh", "max"])
             self.assertIn("example/model", slugs)
             self.assertEqual(user_models.stat().st_mode & 0o777, 0o600)
 

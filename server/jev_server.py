@@ -100,11 +100,15 @@ from local_runtime import (
 )
 
 from routing_policy import (ASTRA, EFFORTS, FALLBACK_EFFORT, FALLBACK_MODEL, LUNA, LUNA_6,
-                            POLICY_VERSION, QUESTIONS, SOL, SOL_61, TERRA,
+                            QUESTIONS, SOL, SOL_61, TERRA,
                             TIERS, decision_from_answers, route)
 from routing_reference import REFERENCE_SHA256, REFERENCE_VERSION, routing_reference
 from ultra_advisory import REASONS as ULTRA_REASONS, recommendation as ultra_recommendation
 from planning_policy import planning_guidance, planning_questions, planning_review
+from selection_policy import (AUTO_ROUTES, MANUAL_ROUTES, SELECTION_POLICY_VERSION,
+                              normalized_updates, resolve_selection, selection_scope)
+
+POLICY_VERSION = SELECTION_POLICY_VERSION
 
 HOME = os.path.expanduser("~")
 ENV_PATH = os.path.join(HOME, ".hermes", ".env")
@@ -484,13 +488,16 @@ def _fallback_constraints(payload):
     }
 
 
-def fallback_candidates(native_model, payload):
+def fallback_candidates(native_model, payload, user_effort=None):
     """Ordered exact routes after native exhaustion, never including jev/auto."""
+    if FALLBACK_OVERRIDE and user_effort is not None:
+        # Operator overrides have no verified effort catalog. Fail closed.
+        return []
     if FALLBACK_OVERRIDE:
         primary = GO_FRONTIER if native_model == ASTRA else GO_STANDARD
         return [
             model for model in (primary, *(item for item in GO_TANDEM if item != primary))
-            if model != "jev/auto" and model not in TIERS
+            if model not in AUTO_ROUTES | MANUAL_ROUTES and model not in TIERS
         ]
 
     constraints = _fallback_constraints(payload)
@@ -499,6 +506,7 @@ def fallback_candidates(native_model, payload):
     ) * 8192
     cache_key = (
         estimated_bucket,
+        user_effort,
         constraints["image"],
         constraints["multi_agent_v2"],
         constraints["search_mode"],
@@ -518,6 +526,8 @@ def fallback_candidates(native_model, payload):
         "--estimated-tokens", str(estimated_bucket),
         "--limit", "2",
     ]
+    if user_effort is not None:
+        command.extend(("--effort", user_effort))
     if constraints["image"]:
         command.append("--image")
     if constraints["multi_agent_v2"]:
@@ -543,7 +553,7 @@ def fallback_candidates(native_model, payload):
                 continue
             slug = entry.get("slug")
             provider = entry.get("provider")
-            if not isinstance(slug, str) or slug == "jev/auto" or slug in seen_slugs:
+            if not isinstance(slug, str) or slug in AUTO_ROUTES | MANUAL_ROUTES or provider == "jev" or slug in seen_slugs:
                 continue
             # Current embedded routers already collapse canonical quota
             # families. Keep this executor-side guard for stale/mixed installs:
@@ -913,7 +923,9 @@ def jev_state(task, prev_assistant, signals, step, cache_state=None):
 def decision_dossier(payload, cache_state=None):
     """Shared projection for live traffic, replay and calibration."""
     task, previous, signals = extract(payload)
-    return jev_state(task, previous, signals, classify(payload), cache_state)
+    state = jev_state(task, previous, signals, classify(payload), cache_state)
+    state.update(resolve_selection(payload).state())
+    return state
 
 
 def _debug_shape(payload):
@@ -965,6 +977,7 @@ def cache_scope(payload, task):
         source = "prompt:" + raw.strip()
     else:
         source = "task:" + (task or "")
+    source += ":selection:" + selection_scope(payload)
     return hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
 
 
@@ -1889,7 +1902,10 @@ class Handler(BaseHTTPRequestHandler):
                     "object": "model",
                     "created": 1758000000,
                     "owned_by": "jev",
-                    "name": DISPLAY_NAME,
+                    "name": DISPLAY_NAME + " by Auto",
+                }, {
+                    "id": "manual", "object": "model", "created": 1758000000,
+                    "owned_by": "jev", "name": DISPLAY_NAME,
                 }],
             })
         elif path in ("/health", ""):
@@ -1932,6 +1948,10 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._body(RESPONSE_MAX_BYTES)
         if payload is None:
             return
+        try:
+            selection = resolve_selection(payload)
+        except ValueError as exc:
+            return self._json(400, {"error": {"message": str(exc)}})
         # Our own answer signatures never travel back upstream (see
         # strip_signatures): the model must not read its own route tag.
         stripped = strip_signatures(payload)
@@ -1973,6 +1993,7 @@ class Handler(BaseHTTPRequestHandler):
             elif key and (plan_mode or task or step.get("digest") or signals.get("has_image")):
                 jt0 = time.time()
                 state = jev_state(task, prev_assistant, signals, step, affinity)
+                state.update(selection.state())
                 if plan_mode:
                     state["native_plan"] = True
                     state["planning_context"] = {
@@ -2007,12 +2028,32 @@ class Handler(BaseHTTPRequestHandler):
                 model, effort, speed, gate = FALLBACK_MODEL, FALLBACK_EFFORT, "default", "no_key_or_task"
                 decision_source = "technical_fallback"
 
+        recommended_effort = effort
+        if selection.mode == "manual":
+            effort = selection.user_effort
+            if decision is not None:
+                decision["effort"] = effort
+
         shadow_enabled = os.path.exists(SHADOW_PATH)
 
         would = None
         if shadow_enabled:
             would = {"model": model, "effort": effort, "speed": speed, "gate": gate}
             model, effort, speed, gate = ASTRA, None, "default", "shadow(astra)"
+
+        # Operational bypass preserves inherited valid controls, never Auto.
+        if effort is None:
+            inherited_reasoning = payload.get("reasoning")
+            inherited = (inherited_reasoning.get("effort")
+                         if isinstance(inherited_reasoning, dict) else None)
+            if selection.mode == "manual":
+                effort = selection.user_effort
+            elif inherited not in EFFORTS:
+                effort = FALLBACK_EFFORT
+
+        def quota_candidates():
+            return (fallback_candidates(model, payload, user_effort=selection.user_effort)
+                    if selection.mode == "manual" else fallback_candidates(model, payload))
 
         # ONLY while native usage is exhausted (manual flag or observed quota
         # failure), replace the OpenAI ladder with locally discovered configured
@@ -2022,10 +2063,11 @@ class Handler(BaseHTTPRequestHandler):
         fallback_plan = []
         no_fallback = False
         if dry_reason and model in TIERS:
-            fallback_plan = fallback_candidates(native_model, payload)
+            fallback_plan = quota_candidates()
             if fallback_plan:
                 model = fallback_plan.pop(0)
-                effort = tandem_effort(effort, native_model)
+                effort = (selection.user_effort if selection.mode == "manual"
+                          else tandem_effort(effort, native_model))
                 speed = "default"
                 gate = f"codex_dry({dry_reason}):{native_model}"
             else:
@@ -2047,7 +2089,7 @@ class Handler(BaseHTTPRequestHandler):
         original_reasoning = (
             dict(payload["reasoning"]) if isinstance(payload.get("reasoning"), dict) else None
         )
-        original_plan_input = payload.get("input") if plan_mode else None
+        original_plan_input = payload.get("input")
         review = (
             decision.get("planning_review", "independent") if decision else "independent"
         ) if plan_mode and gate != "off" and not shadow_enabled else None
@@ -2060,7 +2102,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Each attempt starts with canonical controls, so a quota retry
                 # cannot inherit Plan-only Astra updates.
                 payload["input"] = list(original_plan_input)
-                if model in TIERS and effort in EFFORTS:
+                if (effort in EFFORTS
+                        and (selection.mode == "manual" or (gate != "off" and not shadow_enabled))):
                     payload["input"] = [
                         {
                             **item,
@@ -2076,6 +2119,35 @@ class Handler(BaseHTTPRequestHandler):
                     ]
                 if review is not None:
                     payload["input"].append(planning_guidance(review))
+                    if (selection.mode == "manual" and recommended_effort in EFFORTS
+                            and EFFORTS.index(recommended_effort) > EFFORTS.index(selection.user_effort)):
+                        payload["input"].append({
+                            "role": "developer",
+                            "content": [{
+                                "type": "input_text",
+                                "text": (
+                                    f"Planning recommended effort {recommended_effort}; "
+                                    f"the user selected {selection.user_effort}. Preserve that selection. "
+                                    "Tell the user if this lower effort leaves material planning uncertainty; "
+                                    "recommend a stronger setting without claiming it was activated."
+                                ),
+                            }],
+                        })
+            if selection.mode == "manual" and isinstance(payload.get("input"), list):
+                payload["input"] = normalized_updates(payload["input"], selection.user_effort)
+            if selection.mode == "auto" and isinstance(payload.get("input"), list):
+                payload["input"] = [
+                    {**item, "reasoning": {
+                        **item["reasoning"], "effort": effort or (
+                            original_reasoning.get("effort")
+                            if isinstance(original_reasoning, dict)
+                            and original_reasoning.get("effort") in EFFORTS else FALLBACK_EFFORT),
+                    }}
+                    if isinstance(item, dict) and item.get("type") == "configuration_update"
+                    and isinstance(item.get("reasoning"), dict)
+                    and item["reasoning"].get("effort") == "auto" else item
+                    for item in payload["input"]
+                ]
             injected_update, effort_transport = apply_route_payload(
                 payload, model, effort, original_reasoning, injected_update
             )
@@ -2091,7 +2163,9 @@ class Handler(BaseHTTPRequestHandler):
             )
             unwritten = json.dumps({
                 "error": {
-                    "message": "native Codex usage is exhausted and no compatible configured fallback is available"
+                    "message": (f"native Codex usage is exhausted and no configured fallback can honor manual effort {selection.user_effort}"
+                                if selection.mode == "manual" else
+                                "native Codex usage is exhausted and no compatible configured fallback is available")
                 }
             }).encode("utf-8")
         else:
@@ -2106,10 +2180,11 @@ class Handler(BaseHTTPRequestHandler):
             mark_native_dry("quota", resets_at=resets_at)
             dry_reason = "quota"
             advisory = "none"
-            fallback_plan = fallback_candidates(native_model, payload)
+            fallback_plan = quota_candidates()
             if fallback_plan:
                 model = fallback_plan.pop(0)
-                effort = tandem_effort(effort, native_model)
+                effort = (selection.user_effort if selection.mode == "manual"
+                          else tandem_effort(effort, native_model))
                 apply_route(model, effort)
                 retried = True
                 gate = f"codex_dry(retry):{native_model}"
@@ -2120,6 +2195,11 @@ class Handler(BaseHTTPRequestHandler):
                     exact_route=True)
             else:
                 gate = f"codex_dry(no_candidate):{native_model}"
+                if selection.mode == "manual":
+                    status, ctype = 503, "application/json"
+                    unwritten = json.dumps({"error": {"message":
+                        f"no configured fallback can honor manual effort {selection.user_effort}"
+                    }}).encode("utf-8")
         elif status == 200 and not dry_reason and model in TIERS and os.path.exists(DRY_STATE_PATH):
             # Native answered again: drop the stale auto state (never the flag).
             clear_native_dry()
@@ -2129,7 +2209,9 @@ class Handler(BaseHTTPRequestHandler):
             # One bounded sibling attempt. The candidate resolver already
             # removed jev/auto and incompatible/offline local routes.
             fallback = fallback_plan.pop(0)
-            model, effort = fallback, tandem_effort(effort, native_model)
+            model = fallback
+            effort = (selection.user_effort if selection.mode == "manual"
+                      else tandem_effort(effort, native_model))
             apply_route(model, effort)
             gate = f"codex_dry(fallback):{native_model}"
             marker = route_marker(model, effort)
@@ -2172,6 +2254,7 @@ class Handler(BaseHTTPRequestHandler):
         log_line({
             "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "policy_version": POLICY_VERSION,
+            **selection.state(),
             "reference_version": decision.get("reference_version") if decision else None,
             "reference_sha256": decision.get("reference_sha256") if decision else None,
             "route_probabilities": decision["probabilities"] if decision else None,

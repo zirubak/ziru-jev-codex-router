@@ -7,6 +7,7 @@ import { codexAuthStatus, codexVersion, findCodexBinary, runCodex } from "./code
 import { commandOnPath, spawnableCommand } from "./spawnable-command.mjs";
 import { routedCodexAgentStatus } from "./codex-agent-catalog.mjs";
 import { privateFileIsProtected } from "./file-security.mjs";
+import { isolatedCodexHealthy } from "./isolated-codex-config.mjs";
 import { grokCliPreflight } from "./grok-cli.mjs";
 import { detectLegacyInstallations } from "./legacy-migration.mjs";
 import { routedCatalogConfigured } from "./catalog.mjs";
@@ -1459,7 +1460,7 @@ if (TARGET === "gemini") {
 } else try {
   const config = childJson("config-manager.mjs", ["status"]);
   add(
-    config.mode === "router" ? "ok" : "fail",
+    config.mode === "router" || isolatedCodexHealthy(config) ? "ok" : "fail",
     "Codex routing config",
     config.mode,
     "Run ./bin/enable or ./bin/doctor --fix.",

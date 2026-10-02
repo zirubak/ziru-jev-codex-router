@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 process.env.CODEX_ROUTER_STATE_DIR = mkdtempSync(
   path.join(os.tmpdir(), "jev-fallback-test-"),
@@ -120,6 +122,70 @@ test("an explicit chain cannot reintroduce jev recursion or an unqualified local
     }).map((entry) => entry.slug),
     ["deepseek/deepseek-v4.1-flash"],
   );
+});
+
+test("both Jev slugs and all Jev provider aliases are excluded from fallback", () => {
+  const manual = { ...cloud, slug: "jev/manual", provider: "deepseek" };
+  const alias = { ...cloud, slug: "custom/jev", provider: "jev" };
+  assert.deepEqual(
+    candidates({
+      models: [jev, manual, alias, cloud],
+      settings: { enabled: true, chain: [manual.slug, alias.slug, cloud.slug] },
+    }).map((entry) => entry.slug),
+    [cloud.slug],
+  );
+});
+
+test("manual fallback requires the exact advertised effort before ranking", () => {
+  const limited = {
+    ...cloud, reasoningLevels: [{ effort: "medium", description: "Balanced" }],
+  };
+  const supported = {
+    ...secondCloud, requestProfile: "glm-thinking",
+    reasoningLevels: [
+      { effort: "medium", description: "Balanced" },
+      { effort: "max", description: "Maximum" },
+    ],
+  };
+  assert.deepEqual(
+    candidates({ models: [limited, supported, local], requiredEffort: "max" })
+      .map((entry) => entry.slug),
+    [secondCloud.slug],
+  );
+});
+
+test("fallback CLI rejects invalid manual effort rather than ignoring it", () => {
+  const result = spawnSync(process.execPath, [
+    fileURLToPath(new URL("../src/control.mjs", import.meta.url)),
+    "failover", "candidates", "--effort", "ultra",
+  ], { env: process.env, encoding: "utf8", timeout: 15_000 });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /effort/i);
+});
+
+test("manual fallback excludes transports that discard an advertised effort", () => {
+  const rung = [{ effort: "high", description: "Deep" }];
+  assert.deepEqual(candidates({
+    requiredEffort: "high",
+    models: [
+      { ...local, reasoningLevels: rung },
+      { ...secondCloud, requestProfile: "glm-thinking", reasoningLevels: rung },
+      { ...cloud, requestProfile: "qwen-plan", reasoningLevels: rung },
+    ],
+  }), []);
+});
+
+test("manual fallback excludes xhigh when the chat adapter maps it to max", () => {
+  assert.deepEqual(candidates({
+    requiredEffort: "xhigh",
+    models: [{
+      ...secondCloud, requestProfile: "glm-thinking",
+      reasoningLevels: [
+        { effort: "xhigh", description: "Extended" },
+        { effort: "max", description: "Maximum" },
+      ],
+    }],
+  }), []);
 });
 
 test("context and capability requirements are applied before the bounded plan", () => {

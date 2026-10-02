@@ -86,3 +86,9 @@ names and repository-setting limitations.
 Revert the policy commit and restart the Jev service. No catalog, authentication
 or managed global configuration migration is required. Ordinary routing uses
 the existing quality-sufficient project-token policy.
+
+## Two selection modes (2026-10-02)
+
+Policy `split-v18-selection-modes` adds a Manual model-selection route with exact user effort. Auto retains adaptive model and effort selection. Both routes retain canonical replay and Plan guidance. Cache scope includes mode and Manual effort. Native quota fallback filters the configured inventory by the requested advertised effort; absent support returns an explicit error. The installer publishes both routes idempotently and preserves other models. See the README selection table and operations guide.
+
+Current-candidate validation and installation evidence are recorded in [selection-modes.md](selection-modes.md). The previous validation above belongs to the adaptive planning candidate, not this new candidate.

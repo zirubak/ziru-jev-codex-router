@@ -9,7 +9,27 @@ import { selectedConfiguredListedModels } from "./provider-selection.mjs";
 import { cooldownScope } from "./provider-cooldown.mjs";
 
 const JEV_PROVIDER = "jev";
-const JEV_ROUTE = "jev/auto";
+const JEV_ROUTES = new Set(["jev/auto", "jev/manual"]);
+
+function preservesManualEffort(model, provider, effort) {
+  const levels = model.reasoningLevels || [];
+  if (!levels.some((level) => level.effort === effort) || provider?.keyless) return false;
+  // Catalog labels alone do not prove that the adapter preserves the field.
+  // Unknown profiles fail closed until their wire mapping has been verified.
+  if (provider?.generic && provider.protocol === "openai-responses" &&
+    !model.requestProfile) return true;
+  if (["xhigh", "max"].includes(effort)) {
+    const ladder = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+    const highest = ladder.filter((rung) => levels.some((level) => level.effort === rung)).at(-1);
+    if (highest !== effort) return false;
+  }
+  if (model.requestProfile === "anthropic-reasoning") return true;
+  if (model.requestProfile === "glm-thinking") return levels.length > 1;
+  if (model.requestProfile === "xai-reasoning") {
+    return ["low", "medium", "high"].includes(effort);
+  }
+  return false;
+}
 
 function checkedLocalModel(model, agentChecks) {
   const wanted = canonicalLocalModelTag(model.upstreamModel || "");
@@ -42,6 +62,7 @@ export function jevFallbackCandidates({
   needsImage = false,
   needsMultiAgentV2 = false,
   requiredSearchMode,
+  requiredEffort,
   hasSearchHistory = false,
   limit = 2,
 } = {}) {
@@ -53,8 +74,9 @@ export function jevFallbackCandidates({
   );
   const eligibleModels = (Array.isArray(models) ? models : []).filter((model) => {
     if (!model?.slug || hidden.has(model.slug)) return false;
-    if (model.slug === JEV_ROUTE || model.provider === JEV_PROVIDER) return false;
+    if (JEV_ROUTES.has(model.slug) || model.provider === JEV_PROVIDER) return false;
     const provider = PROVIDERS.get(model.provider);
+    if (requiredEffort && !preservesManualEffort(model, provider, requiredEffort)) return false;
     if (!provider?.keyless) return true;
     if (!checkedLocalModel(model, agentChecks)) return false;
     if (model.provider === "local") return ollamaRuntime?.running === true;
