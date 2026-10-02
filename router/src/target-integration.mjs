@@ -17,6 +17,7 @@ import {
   TARGET,
 } from "./paths.mjs";
 import { routedHarnesses } from "./routed-harness-catalog.mjs";
+import { JEV_PROFILE_PATH } from "./isolated-codex-config.mjs";
 
 // The begin markers config-manager.mjs writes around every block it owns,
 // including the legacy kimi-era pairs it still recognizes. config-manager.mjs
@@ -183,6 +184,13 @@ export function installedTargets() {
 }
 
 function codexIntegrationInstalled() {
+  if (existsSync(JEV_PROFILE_PATH)) {
+    try {
+      if (readFileSync(JEV_PROFILE_PATH, "utf8").startsWith("# Jev managed isolated profile v1\n")) return true;
+    } catch {
+      return true;
+    }
+  }
   if (!existsSync(CONFIG_PATH)) return false;
   try {
     return managedMarkerPattern.test(readFileSync(CONFIG_PATH, "utf8"));

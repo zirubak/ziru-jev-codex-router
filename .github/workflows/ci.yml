@@ -80,3 +80,22 @@ jobs:
         run: npm install --global @openai/codex@0.155.0-alpha.9.2
       - name: Verify the real app-server integration cannot skip
         run: node --test --test-timeout=600000 test/login-free-app-server.test.mjs
+
+  isolated-profile-contract:
+    name: Isolated Codex profile (0.159.3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: router
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: router/package-lock.json
+      - run: npm ci
+      - run: npm install --global @openai/codex@0.159.3
+      - name: Verify explicit profile isolation through real local HTTP
+        run: CODEX_ISOLATION_TEST_BIN="$(command -v codex)" node --test test/isolated-codex-http.test.mjs

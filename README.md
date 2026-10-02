@@ -8,25 +8,24 @@
 
 [한국어](README.ko.md) · [Install](#install) · [Examples](#what-youll-see) · [How it works](#how-it-works) · [Star this project](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
-ZIRU adds **Jev Codex Router** to the model menu in Codex Desktop. Select it and keep working as usual: ask a question, fix a bug, or build a feature. Jev, from TypeSafe, chooses between **GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason.
+ZIRU exposes **Jev Codex Router** through the explicit `codex -p jev` profile. Select that profile and keep working as usual: ask a question, fix a bug, or build a feature. Jev, from TypeSafe, chooses between **GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason.
 
 The aim is to use enough reasoning to do the job well, while avoiding unnecessary token use across coding, tests, reviews and corrections. A small edit and a final security review should not need the same approach.
 
-## Select once, then keep coding
+## Select an isolated profile
 
-<p align="center"><img src="docs/assets/model-picker.png" width="340" alt="Codex model menu with Jev Codex Router selected beneath the existing models"></p>
+1. Install with the root installer below.
+2. Run `codex -p jev` to select the Jev model and its dedicated local provider together.
+3. Send your usual prompts. With route display enabled, replies include `[gpt-6.1-sol / high]`.
 
-*After installation, Jev Codex Router appears alongside your existing models. They remain available whenever you want to choose one yourself. The screenshot shows one installation's menu; automatic routing uses the three candidates listed below.*
+Normal Codex and the Desktop model picker keep their official OpenAI/ChatGPT
+provider and catalog. Jev is available only through an explicitly selected
+profile; the installer does not override `openai_base_url` or the global
+model catalog. Existing threads retain their provider/model identity. Start a
+fresh official-model thread for normal use.
 
-1. **Install and restart Codex.** Follow the setup below, then quit and reopen the app.
-2. **Select Jev Codex Router** in the model menu for your chat.
-3. **Send your usual prompts.** With the route display enabled, responses include a label such as `[gpt-6.1-sol / high]`.
-
-The **High** beside the router's name in the picker is the chat's selected setting. The route label in the response shows the model and effort actually served, which may change as the work progresses. Select an ordinary model in the same menu to leave automatic routing for that chat.
-
-![Four-panel caveman comic: choose Jev once, send normal coding requests, see task-appropriate model and effort labels, and keep coding.](docs/assets/quickstart-comic.png)
-
-*A typo fix and a tricky bug review can take different routes. These are examples, not guaranteed model choices.*
+See [provider isolation](docs/release/provider-isolation.md) for configuration,
+recovery and verification details.
 
 ## Install
 
@@ -85,11 +84,11 @@ owners instead of terminating them.
 Enable the [model / effort] display. Run the documented status, doctor and
 smoke checks; a health check alone is not proof of successful installation.
 Report the installed revision, check results and any restoration failure.
-Let me restart Codex, then show me how to select Jev Codex Router and how
-to switch back to an ordinary model.
+Do not restart Codex. Show me how to select codex -p jev explicitly and verify
+a fresh ordinary-model chat remains on the official provider.
 ```
 
-Installation includes a live smoke request and may consume usage. Codex should leave the final app restart to you.
+Installation includes a live smoke request and may consume usage. No app restart is performed.
 
 <details>
 <summary><strong>Prefer to install from Terminal?</strong></summary>
@@ -112,7 +111,7 @@ bin/jev-codex-router router doctor
 bin/jev-codex-router smoke
 ```
 
-Quit and reopen Codex, then select **Jev Codex Router**. To prepare dependencies without activating services, use `./install.sh --prepare-only`. See the [operations guide](server/INSTALL.md) for installation details and recovery.
+Run `codex -p jev` to select **Jev Codex Router** explicitly. To prepare dependencies without activating services, use `./install.sh --prepare-only`. See the [operations guide](server/INSTALL.md) for installation details and recovery.
 
 </details>
 
@@ -192,7 +191,7 @@ Codex subscription fees, usage credits, API-equivalent estimates and TypeSafe ch
 
 ```mermaid
 flowchart TD
-    C[Codex Desktop] -->|Jev Codex Router selected| R[Local embedded router]
+    C[Explicit codex -p jev session] --> R[Local embedded router]
     R --> J[Local Jev decision server]
     J -->|Bounded decision dossier| T[TypeSafe direct API]
     T -->|Model and effort decision| J

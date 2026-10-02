@@ -45,7 +45,9 @@ class InstallTransactionTests(unittest.TestCase):
                     "CODEX_HOME": str(self.codex_home),
                     "CODEX_ROUTER_STATE_DIR": str(self.state),
                     "PATH": str(self.commands) + os.pathsep + os.environ["PATH"],
-                    "FIXTURE_CALLS": str(self.base / "calls")}
+                    "FIXTURE_CALLS": str(self.base / "calls"),
+                    "FIXTURE_NODE": shutil.which("node"),
+                    "FIXTURE_MANAGER": str(ROOT / "router/src/config-manager.mjs")}
         self._script(self.commands / "node", '''#!/usr/bin/env python3
 import json,os,pathlib,sys
 state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
@@ -65,14 +67,15 @@ if sys.argv[1:3]==['chatgpt-session','enable']:
   print('ChatGPT session sharing cannot be enabled while credential discovery is disabled.');sys.exit(1)
 ''')
         installer = '''#!/usr/bin/env python3
-import json,os,pathlib,sys
+import json,os,pathlib,sys,subprocess
 state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
 with open(os.environ['FIXTURE_CALLS'],'a') as log:log.write('install '+' '.join(sys.argv[1:])+'\\n')
 if '--prepare-only' in sys.argv:sys.exit(0)
 disabled='--no-discovery' in sys.argv
 (state/'discovery-mode.json').write_text(json.dumps({'version':1,'discovery':'disabled' if disabled else 'enabled'}))
 (state/'merged-models.json').write_text(json.dumps({'models':[] if disabled else [{'slug':'test/native'}]}))
-(pathlib.Path(os.environ['CODEX_HOME'])/'config.toml').write_text('# BEGIN codex-router-managed\\nmodel_catalog_json = "'+str(state/'merged-models.json')+'"\\n# END codex-router-managed\\n')
+(state/'caller-secret').write_text('synthetic-installer-caller-key-long-enough\\n')
+subprocess.run([os.environ['FIXTURE_NODE'],os.environ['FIXTURE_MANAGER'],'enable'],check=True)
 '''
         self._script(self.repo / "router/install.sh", installer)
         self._script(self.repo / "router/bin/install", installer)
@@ -99,6 +102,26 @@ disabled='--no-discovery' in sys.argv
         self.assertIn("chatgpt-session enable", calls)
         self.assertTrue(json.loads((self.state / "merged-models.json").read_text())["models"])
 
+    def test_reinstall_keeps_default_config_and_profile_identical(self) -> None:
+        first = self.run_install()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(self.config.read_bytes(), self.original)
+        profile = self.codex_home / "jev.config.toml"
+        previous = profile.read_bytes()
+        second = self.run_install()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertEqual(profile.read_bytes(), previous)
+
+    def test_late_failure_restores_existing_profile(self) -> None:
+        profile = self.codex_home / "jev.config.toml"
+        previous = '# Jev managed isolated profile v1\nmodel = "previous"\n'
+        profile.write_text(previous)
+        result = self.run_install(FIXTURE_FAIL_SMOKE="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(profile.read_text(), previous)
+        self.assertEqual(self.config.read_bytes(), self.original)
+
     def test_empty_catalog_is_rejected_before_live_config_activation(self):
         result = self.run_install(FIXTURE_EMPTY="1")
         self.assertNotEqual(result.returncode, 0)
@@ -112,6 +135,7 @@ disabled='--no-discovery' in sys.argv
         self.assertEqual(self.config.read_bytes(), self.original)
         self.assertEqual(json.loads((self.state / "discovery-mode.json").read_text())["discovery"], "disabled")
         self.assertFalse((self.state / "merged-models.json").exists())
+        self.assertFalse((self.codex_home / "jev.config.toml").exists())
         self.assertEqual((self.codex_home / "auth.json").read_text(), '{"synthetic":true}\n')
 
     def test_existing_idle_install_transitions_to_required_discovery(self):
@@ -139,6 +163,22 @@ disabled='--no-discovery' in sys.argv
         with self.assertRaises((ValueError, OSError)):
             transaction.private_copy(self.config, link)
         self.assertEqual(victim.read_text(), "original")
+
+    def test_isolation_rejects_default_router_model_and_nested_openai_url(self) -> None:
+        self.assertEqual(self.run_install().returncode, 0)
+        for text in ['model = "jev/auto"\n',
+                     '[model_providers.openai]\nbase_url = "http://localhost:4202/v1"\n']:
+            with self.subTest(config=text):
+                self.config.write_text(text)
+                with mock.patch.dict(os.environ, self.env), self.assertRaises(ValueError):
+                    transaction.validate_isolation()
+
+    def test_isolation_rejects_incomplete_profile_transport(self) -> None:
+        (self.codex_home / "jev.config.toml").write_text(
+            'model="jev/auto"\nmodel_provider="jev-router"\n'
+            '[model_providers.jev-router]\nrequires_openai_auth=false\n')
+        with mock.patch.dict(os.environ, self.env), self.assertRaises(ValueError):
+            transaction.validate_isolation()
 
     def stage_service_backup(self):
         for label in transaction.LABELS:

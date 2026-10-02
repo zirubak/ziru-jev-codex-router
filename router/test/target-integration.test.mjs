@@ -22,6 +22,7 @@ const {
   OPENCLAW_CATALOG_PATH,
   ROUTED_HARNESS_CATALOG_PATHS,
 } = await import("../src/paths.mjs");
+const { JEV_PROFILE_PATH } = await import("../src/isolated-codex-config.mjs");
 
 function stageFile(filePath, contents) {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -30,7 +31,7 @@ function stageFile(filePath, contents) {
 
 function clearStagedFiles() {
   for (const filePath of [
-    CONFIG_PATH, CLAUDE_CATALOG_PATH, CURSOR_CATALOG_PATH, DSH_CATALOG_PATH, NATIVE_CATALOG_PATH,
+    JEV_PROFILE_PATH, CONFIG_PATH, CLAUDE_CATALOG_PATH, CURSOR_CATALOG_PATH, DSH_CATALOG_PATH, NATIVE_CATALOG_PATH,
     OPENCLAW_CATALOG_PATH, ...Object.values(ROUTED_HARNESS_CATALOG_PATHS),
   ]) {
     rmSync(filePath, { force: true });
@@ -46,6 +47,22 @@ test("a retained native catalog alone does not keep the codex integration instal
     assert.deepEqual(installedTargets(), []);
 
     stageFile(CONFIG_PATH, 'model = "gpt-5"\n');
+    assert.deepEqual(installedTargets(), []);
+  } finally {
+    clearStagedFiles();
+  }
+});
+
+test("an isolated Jev profile keeps the shared plane installed", () => {
+  try {
+    stageFile(CONFIG_PATH, 'model = "gpt-6.1-sol"\n');
+    stageFile(JEV_PROFILE_PATH, '# Jev managed isolated profile v1\nmodel_provider = "jev-router"\n');
+    assert.deepEqual(installedTargets(), ["codex"]);
+    stageFile(DSH_CATALOG_PATH, "{}");
+    assert.deepEqual(installedTargets(), ["codex", "dsh"]);
+    rmSync(DSH_CATALOG_PATH);
+    assert.deepEqual(installedTargets(), ["codex"]);
+    rmSync(JEV_PROFILE_PATH);
     assert.deepEqual(installedTargets(), []);
   } finally {
     clearStagedFiles();

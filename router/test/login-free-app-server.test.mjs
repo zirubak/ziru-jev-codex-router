@@ -398,8 +398,12 @@ async function verifySignedOutTurn(binary, { initialProvider = "openai" } = {}) 
 }
 
 test("real Codex app-server completes signed-out turns through fallback and preserved providers", async (t) => {
+  // An explicit contract binary must not be expanded into every historical
+  // installation on the host. Missing explicit inputs are errors, not skips.
+  const explicitBinary = process.env.CODEX_BIN;
+  if (explicitBinary) assert.ok(existsSync(explicitBinary), "CODEX_BIN must name an installed contract binary");
   const candidates = [...new Set(
-    [findCodexBinary(), ...codexCandidatePaths()]
+    (explicitBinary ? [explicitBinary] : [findCodexBinary(), ...codexCandidatePaths()])
       .filter((candidate) => candidate && existsSync(candidate))
       .map((candidate) => realpathSync(candidate)),
   )];
