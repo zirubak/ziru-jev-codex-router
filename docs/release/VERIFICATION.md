@@ -26,11 +26,25 @@ Local verification date: 2026-10-01 (America/Los_Angeles).
   protection was enabled.
 - All three brand images are tracked with dimensions and hashes in
   `docs/assets/manifest.json`. The banner was visually rechecked.
-- Social preview settings upload is pending: the in-app browser is signed out
-  of GitHub and cannot access this private repository's settings. The prepared
-  image is `docs/assets/social-preview.png`.
+- The signed-in Chrome General settings were inspected and did not show a
+  Social preview upload control. The owner accepted README image embedding
+  instead; both READMEs include `docs/assets/social-preview.png` and the banner.
+  Separate social-preview settings are excluded from this preview's acceptance.
 - Existing user services were not replaced to qualify this release path.
   No new live installation or bad-key network response is claimed.
 
 No durable learning: release boundaries and fixes are recoverable from the
 source, tests, and existing documentation.
+
+## Owner-approved completion scope (2026-10-01)
+
+The owner accepted unverified manual Windows use as a documented limitation,
+requested Windows testing feedback, and accepted README-hosted brand images
+instead of separate social-preview settings. These disclosures are present in
+both READMEs and SUPPORT.md. Windows CI stays enabled but is not a completion
+gate for this macOS preview. Run `36960850616` passed the pinned Codex contract,
+both Python lanes, and Linux/macOS embedded router lanes when checked. Its
+Windows lane was still running; no Windows pass or failure is inferred.
+
+The approved private preview scope is complete after these documentation
+changes are pushed. This does not claim Windows support or a new live install.

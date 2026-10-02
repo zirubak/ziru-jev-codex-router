@@ -1,6 +1,6 @@
 # Support and test matrix
 
-Last reviewed: 2026-09-22.
+Last reviewed: 2026-10-01.
 
 ## Product support
 
@@ -56,3 +56,11 @@ npx playwright install chromium
 ```
 
 On Linux CI, use `npx playwright install --with-deps chromium`.
+
+## Preview release limitations
+
+Manual Windows installation and end-to-end use have not been validated by the
+maintainer. The macOS product preview may ship with this disclosed limitation;
+Windows CI remains enabled as portability feedback, not a release completion
+gate for this preview. Windows testers with repository access are invited to
+report sanitized results through GitHub Issues as described in both READMEs.

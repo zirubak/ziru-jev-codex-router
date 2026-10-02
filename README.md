@@ -125,6 +125,29 @@ Disabling Jev preserves other providers. For full router removal, review [operat
 
 See [support matrix](docs/SUPPORT.md), [release checks](docs/RELEASING.md), [security](SECURITY.md), and [contribution guide](CONTRIBUTING.md).
 
+
+## Platform limitations and feedback
+
+This preview targets **macOS Codex Desktop**. The maintainer has not performed
+manual Windows installation or end-to-end Windows validation. The root installer
+uses macOS launchd and is not a supported Windows installer. Portable embedded
+router CI is separate from whole-product support; a passing Windows CI job would
+not establish Windows installation support.
+
+Windows testers with repository access are welcome to test the portable
+`router/` component in an isolated environment and share feedback in
+[GitHub Issues](https://github.com/zirubak/ziru-jev-codex-router/issues). Include
+your Windows version, Node.js and Codex versions, tested commit, steps to
+reproduce, expected and actual behavior, and sanitized errors. Never attach
+API keys, authentication files, raw conversations or installation backups.
+
+## Brand preview
+
+The README banner above and the preview below are included in the repository.
+GitHub's separate social-preview settings are not a requirement for this release.
+
+![ZIRU project preview](docs/assets/social-preview.png)
+
 ## Origins & Credits
 
 Based on [0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router), base commit `8701ef788aa8cb0948f299538747fb01029d32b8`. Original MIT copyright remains in [LICENSE](LICENSE). Embedded router provenance and its separate MIT license are documented in [ROUTER_FORK.md](ROUTER_FORK.md).

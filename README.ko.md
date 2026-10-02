@@ -113,6 +113,29 @@ Jev 비활성화는 다른 provider를 유지합니다. 전체 제거는 다른 
 
 [지원 범위](docs/SUPPORT.md) · [출시 검사](docs/RELEASING.md) · [보안](SECURITY.md) · [기여](CONTRIBUTING.md)
 
+
+## 플랫폼 한계와 테스트 피드백
+
+이번 preview의 지원 대상은 **macOS Codex Desktop**입니다. 제작자는 Windows
+설치와 전체 동작을 수동으로 검증하지 못했습니다. 루트 설치 도구는 macOS의
+launchd를 사용하므로 Windows용 설치 도구로 지원하지 않습니다. 내장 router의
+이식성 CI와 제품 전체 지원은 별개이며, Windows CI 통과만으로 Windows 설치
+지원이 확인되는 것은 아닙니다.
+
+저장소 접근 권한이 있는 Windows 사용자의 테스트와 피드백을 환영합니다.
+격리된 환경에서 이식 가능한 `router/` 구성요소를 시험하고
+[GitHub Issues](https://github.com/zirubak/ziru-jev-codex-router/issues)에 Windows·
+Node.js·Codex 버전, 시험한 commit, 재현 절차, 기대 결과와 실제 결과, 비밀을
+제거한 오류를 알려주세요. API 키·인증 파일·원시 대화·설치 백업은 첨부하지
+마세요.
+
+## 브랜드 이미지
+
+상단 배너와 아래 공유용 이미지는 README와 저장소에 포함돼 있습니다.
+GitHub의 별도 Social preview 설정 적용은 이번 출시의 완료 조건에서 제외합니다.
+
+![ZIRU 프로젝트 미리보기](docs/assets/social-preview.png)
+
 ## 출처와 ZIRU 변경점
 
 [0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router)를 기반으로 발전시켰으며, base commit은 `8701ef788aa8cb0948f299538747fb01029d32b8`입니다. [MIT 라이선스](LICENSE)와 [embedded router 출처](ROUTER_FORK.md)를 유지합니다.
