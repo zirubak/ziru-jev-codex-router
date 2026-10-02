@@ -242,8 +242,14 @@ launchctl bootout "gui/$(id -u)/com.thibaultsaintjean.jev-router"
 다른 등록 클라이언트가 남으면 공유 서비스는 보존됩니다. 직접 Codex를 재시작하고
 native 모델 선택과 `router status`로 제거를 확인합니다. 키·로그·백업은 삭제하지 않습니다.
 
-## 스타 현황
+## Star History
 
-GitHub API에서 확인한 **스타 0개**, 기준일 2026-10-01 (America/Los_Angeles)입니다. 초기 시점의 정적 그래프이며 성장 추세나 자동 갱신을 뜻하지 않습니다. CI 배지는 실제 workflow에 연결되지만 private 접근 제한으로 원격 이미지가 보이지 않을 수 있습니다.
+아래는 [Star History](https://www.star-history.com/) 서비스의 손그림 스타일 그래프이며 밝은·어두운 테마를 지원합니다. **현재 저장소는 private이고 인증 없는 그래프 요청이 HTTP 403으로 거절됐으므로, 실제 그래프 표시를 검증하지 못했으며 이미지가 보이지 않을 수 있습니다.** 공개 데이터에 접근 가능한 경우 사용할 연동을 준비한 상태이며 저장소는 private을 유지합니다. GitHub 토큰을 이미지 주소에 넣거나 서비스에 전달하지 않았습니다. 기존 자체 제작 그래프는 화면에서 제외했습니다.
 
-![GitHub stars snapshot](docs/assets/star-history.svg)
+<a href="https://www.star-history.com/#zirubak/ziru-jev-codex-router&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date&amp;theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date" />
+    <img alt="Star History chart — unavailable while this repository is private" src="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date" />
+  </picture>
+</a>

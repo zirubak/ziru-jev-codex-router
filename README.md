@@ -240,8 +240,14 @@ ZIRU extends the upstream implementation with research-informed model and effort
 
 Read more about AI-assisted development and the experiments behind this project on [ZIRU’s Medium blog](https://medium.com/@jh.baek.sd). Follow the blog for longer explanations alongside the code and its evidence.
 
-## Stars snapshot
+## Star History
 
-GitHub API snapshot: **0 stars**, checked 2026-10-01 (America/Los_Angeles). This is a static initial snapshot, not a growth trend. It does not auto-update. The CI badge links to the actual workflow; private-repository access restrictions may prevent its remote image from loading.
+The hand-drawn chart below is provided by [Star History](https://www.star-history.com/), with light and dark themes. **This repository is currently private: the unauthenticated chart request was rejected (HTTP 403), so a live graph is not verified and may not render.** The integration is prepared for public data access; the repository remains private. No GitHub token is embedded or sent to the chart service. The previous local snapshot is no longer the displayed chart.
 
-![GitHub stars snapshot](docs/assets/star-history.svg)
+<a href="https://www.star-history.com/#zirubak/ziru-jev-codex-router&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date&amp;theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date" />
+    <img alt="Star History chart — unavailable while this repository is private" src="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date" />
+  </picture>
+</a>
