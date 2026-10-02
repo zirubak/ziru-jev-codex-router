@@ -166,6 +166,13 @@ Labels appear with the first text of each assistant message; they are not shown 
 
 The current policy requires Astra for the review and architecture categories above; effort is chosen separately. Within a clean continuation, a decision can be reused within a bounded continuation. New user requests, errors, compaction and changes in the tool chain trigger reassessment.
 
+In native Plan mode, Jev prioritizes an implementation-ready plan and chooses
+capability, reasoning depth and a review recommendation for the remaining
+uncertainty and risk. Substantive plans receive bounded completion guidance;
+small clerical edits can stay lightweight. Parallel review is conditional on
+the caller's tools and authority, and the router does not launch agents or
+certify their work. See [adaptive planning validation](docs/release/adaptive-planning.md).
+
 **If Jev has a technical failure**, or the key/task is missing, execution falls back to **GPT-6.1 Sol / high / Standard**. A Sol/high label alone cannot distinguish a normal choice from fallback; the local diagnostics provide that detail. Kill switch, shadow mode and exhausted model quota have [separate handling](server/INSTALL.md).
 
 **Ultra requires your choice.** When independent parallel work could help, the router can recommend selecting a native Sol or Astra Ultra option. The current advisory is in Korean. It does not switch modes or enable delegation for you; client support and delegation permission are still required. Ultra can use more tokens.

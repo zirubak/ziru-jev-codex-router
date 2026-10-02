@@ -7,6 +7,10 @@ the portable embedded router tests.
 
 - Model policy and Jev decisions belong to `server/`; shared auth, transport and
   client integration belong to `router/`. Preserve full canonical replay.
+- Native Plan mode prioritizes an implementation-ready plan using adaptive
+  capability, depth and bounded review recommendations. Do not replace this
+  with a blanket Astra/max rule. Review guidance never grants delegation
+  authority or establishes that an independent review occurred.
 - Use TypeSafe's direct API only. Never print, commit or republish credentials,
   raw transcripts, decision logs or installation backups.
 - Test behavior changes RED → GREEN on isolated homes before implementation.

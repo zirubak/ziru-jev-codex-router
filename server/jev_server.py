@@ -104,6 +104,7 @@ from routing_policy import (ASTRA, EFFORTS, FALLBACK_EFFORT, FALLBACK_MODEL, LUN
                             TIERS, decision_from_answers, route)
 from routing_reference import REFERENCE_SHA256, REFERENCE_VERSION, routing_reference
 from ultra_advisory import REASONS as ULTRA_REASONS, recommendation as ultra_recommendation
+from planning_policy import planning_guidance, planning_questions, planning_review
 
 HOME = os.path.expanduser("~")
 ENV_PATH = os.path.join(HOME, ".hermes", ".env")
@@ -634,6 +635,67 @@ def _content_text(content):
             if isinstance(text, str):
                 parts.append(text)
     return "\n".join(parts)
+
+
+def _unfenced_mode_text(text: str) -> str:
+    """Exclude examples, including unclosed and longer Markdown fences."""
+    lines: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        marker = re.match(r"^[ \t]*(`{3,}|~{3,})", line)
+        if fence is not None:
+            if re.fullmatch(
+                r"[ \t]*" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*",
+                line,
+            ):
+                fence = None
+            lines.append("")
+        elif marker:
+            fence = marker.group(1)
+            lines.append("")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def plan_collaboration_mode(payload: dict) -> bool:
+    """Read top-level mode notices from trusted developer messages only."""
+    items = payload.get("input")
+    if not isinstance(items, list):
+        return False
+    mode = None
+    tags = re.compile(r"<(/?)([A-Za-z_][\w-]*)(?:\s[^<>]*)?(/?)>")
+    for item in items:
+        if not isinstance(item, dict) or item.get("role") != "developer":
+            continue
+        text = _unfenced_mode_text(_content_text(item.get("content")))
+        stack: list[str] = []
+        active_start: int | None = None
+        for tag in tags.finditer(text):
+            closing, name, self_closing = tag.groups()
+            # Native mode bodies contain instructions with literal XML examples.
+            # Once a top-level notice starts, only its closing envelope matters.
+            if active_start is not None:
+                if closing and name == "collaboration_mode":
+                    selected = re.match(
+                        r"\s*# Collaboration Mode: (Plan|Default)\b",
+                        text[active_start:tag.start()],
+                    )
+                    mode = selected.group(1) if selected else None
+                    active_start = None
+                    stack.pop()
+                continue
+            if closing:
+                if stack and stack[-1] == name:
+                    stack.pop()
+            elif not self_closing and not tag.group(0).endswith("/>"):
+                line_prefix = text[text.rfind("\n", 0, tag.start()) + 1:tag.start()]
+                if not stack and line_prefix.strip():
+                    continue
+                if not stack and name == "collaboration_mode" and not line_prefix:
+                    active_start = tag.end()
+                stack.append(name)
+    return mode == "Plan"
 
 
 def strip_envelopes(text):
@@ -1894,7 +1956,8 @@ class Handler(BaseHTTPRequestHandler):
         decision_source = None
         scope = cache_scope(payload, task)
         affinity = cache_affinity(scope, payload)
-        leased = route_lease(scope, payload, step)
+        plan_mode = plan_collaboration_mode(payload)
+        leased = None if plan_mode else route_lease(scope, payload, step)
         if os.path.exists(OFF_PATH):
             model, effort, speed, gate = ASTRA, None, "default", "off"
         else:
@@ -1907,12 +1970,24 @@ class Handler(BaseHTTPRequestHandler):
                 model, effort, speed, _ = route(tier, depth)
                 gate = decision["gate"]
                 decision_source = "lease"
-            elif key and (task or step.get("digest") or signals.get("has_image")):
+            elif key and (plan_mode or task or step.get("digest") or signals.get("has_image")):
                 jt0 = time.time()
                 state = jev_state(task, prev_assistant, signals, step, affinity)
+                if plan_mode:
+                    state["native_plan"] = True
+                    state["planning_context"] = {
+                        "mode": "Plan", "objective": "quality_first_adaptive",
+                        "review_is_recommendation_not_completion": True,
+                    }
                 try:
-                    result = call_jev_routed(key, state)
+                    result = (
+                        call_jev_routed(key, state, questions=planning_questions())
+                        if plan_mode else call_jev_routed(key, state)
+                    )
                     decision = decision_from_answers(result.get("answers"))
+                    if plan_mode:
+                        decision["planning_review"] = planning_review(result.get("answers"))
+                        decision["lease"] = "one_call"
                     raw_usage = result.get("usage") or {}
                     if not isinstance(raw_usage, dict):
                         raw_usage = {}
@@ -1972,11 +2047,35 @@ class Handler(BaseHTTPRequestHandler):
         original_reasoning = (
             dict(payload["reasoning"]) if isinstance(payload.get("reasoning"), dict) else None
         )
+        original_plan_input = payload.get("input") if plan_mode else None
+        review = (
+            decision.get("planning_review", "independent") if decision else "independent"
+        ) if plan_mode and gate != "off" and not shadow_enabled else None
         injected_update = None
         effort_transport = None
 
         def apply_route(model, effort):
             nonlocal injected_update, effort_transport
+            if isinstance(original_plan_input, list):
+                # Each attempt starts with canonical controls, so a quota retry
+                # cannot inherit Plan-only Astra updates.
+                payload["input"] = list(original_plan_input)
+                if model in TIERS and effort in EFFORTS:
+                    payload["input"] = [
+                        {
+                            **item,
+                            "reasoning": {
+                                **(item.get("reasoning") or {}), "effort": effort,
+                            },
+                        }
+                        if isinstance(item, dict)
+                        and item.get("type") == "configuration_update"
+                        and isinstance(item.get("reasoning", {}), dict)
+                        else item
+                        for item in payload["input"]
+                    ]
+                if review is not None:
+                    payload["input"].append(planning_guidance(review))
             injected_update, effort_transport = apply_route_payload(
                 payload, model, effort, original_reasoning, injected_update
             )
@@ -2082,6 +2181,7 @@ class Handler(BaseHTTPRequestHandler):
             "jev_usage": jev_usage,
             "attempts": self._attempts,
             "decision_source": decision_source,
+            "planning_review": review,
             "ultra_advice": advisory,
             "lease": decision.get("lease") if decision else None,
             "lease_hit": decision_source == "lease",
