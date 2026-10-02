@@ -65,3 +65,29 @@ Footer: "Illustrative routes. Actual choices depend on context."
 Render exact lettering legibly. Keep all panels visible with generous margins.
 No savings percentages, money, speed guarantees, stars, benchmark claims,
 extra logos or watermark.
+
+## Key setup comic
+
+`key-setup-comic.png` was created on 2026-10-02 with the built-in ChatGPT
+image generation tool and the owner's character reference. No selectable model
+version was exposed. The three panels, file labels and footer were visually
+inspected. It is an illustration, not a screenshot of the TypeSafe console.
+Localized alternative text and complete instructions accompany it in both
+READMEs. Dimensions and checksum are in `manifest.json`.
+
+Production prompt: original three-panel American newspaper cartoon, 3:1
+landscape, ivory paper with copper and slate, preserving the reference
+caveman's glasses, hair, beard, leopard tunic and stone hammer. Panel one:
+collect a gold key from a laptop marked TypeSafe; caption "1. Get your key";
+speech "My little key to Jev!" Panel two: put the key in a locked box marked
+"~/.jev.env"; caption "2. Save it privately"; speech "Home sweet home."
+Panel three: ask a Codex laptop to install, keeping the box nearby; caption
+"3. Ask Codex to install"; speech "Ready. Let’s build something!" Footer:
+"Your key stays in your private file. Never paste it into chat."
+No actual credentials, Medium lettering, existing comic characters,
+watermarks or savings promises.
+
+The key-page link was checked against TypeSafe's official quick-start Markdown
+at https://docs.typesafe.ai/introduction/quickstart.md on 2026-10-02.
+Console button labels were not independently verified; the guide avoids
+assuming their exact wording.

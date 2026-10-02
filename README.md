@@ -30,9 +30,41 @@ The **High** beside the router's name in the picker is the chat's selected setti
 
 ## Install
 
-This is a **private preview for macOS Codex Desktop**. You need access to this repository, a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/).
+This is a **private preview for macOS Codex Desktop**. You need access to this repository, a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).
 
-Save the key in your private `~/.jev.env` file under the setting `TYPESAFE_API_KEY`, using an editor. Keep the file outside this repository with permissions `600`. Do not paste the key into a chat or issue. The service runs from its checkout, so install on a permanent internal-disk path.
+### First, give Jev its little key
+
+Think of the API key as your personal key to Jev. Its home is **`~/.jev.env`**, a small text file on your Mac — not inside this project.
+
+![Caveman gets a TypeSafe key, stores it in a private ~/.jev.env file, then asks Codex to install.](docs/assets/key-setup-comic.png)
+
+**1. Get the key.** Open the [TypeSafe key page](https://console.typesafe.ai/keys), sign in or create an account, and create an API key. Copy it for the next step. The [official quick start](https://docs.typesafe.ai/introduction/quickstart) links to this page; button names may change.
+
+**2. Make its home.** Open **Terminal** on your Mac (press `Command + Space`, type `Terminal`, then press Return). Run these lines one at a time. They contain no key:
+
+```sh
+touch "$HOME/.jev.env"
+chmod 600 "$HOME/.jev.env"
+nano "$HOME/.jev.env"
+```
+
+`touch` creates the file if needed without clearing an existing one. `chmod 600` lets only your Mac user read and write it. `nano` opens a plain-text editor inside Terminal.
+
+In the editor, type this setting name:
+
+```text
+TYPESAFE_API_KEY=
+```
+
+Paste your copied key **immediately after `=`**, on that same line. Do not leave the value empty. If the setting already exists, replace only its value and preserve other settings. No `export`, extra spaces or second line is needed.
+
+Press **Control + O**, then **Return** to save. Press **Control + X** to exit. These are Control shortcuts, not Command shortcuts.
+
+`~` means your home folder; the dot makes `.jev.env` a hidden file. For example, it lives at `/Users/YOUR_MAC_USERNAME/.jev.env`. Keep the exact filename: **`.jev.env`, not `.jev.env.txt`**. Already have a working file? Keep it and skip creating another one.
+
+**3. Let Codex do the rest.** Paste the installation prompt below. Tell Codex only that the file is ready — **never paste the key into chat, an issue or a terminal command**. The installer checks the file, and its live smoke test checks the connection. You can now go back to building something fun.
+
+The service runs from its checkout, so install on a permanent internal-disk path.
 
 ### Ask Codex to set it up
 

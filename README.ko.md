@@ -30,9 +30,41 @@ ZIRU는 Codex Desktop의 모델 메뉴에 **Jev Codex Router**를 추가합니�
 
 ## 설치
 
-현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/)가 필요합니다.
+현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
 
-편집기로 개인 `~/.jev.env` 파일에 `TYPESAFE_API_KEY` 설정을 저장하세요. 파일은 저장소 밖에 두고 권한을 `600`으로 설정합니다. 키를 채팅이나 이슈에 붙여넣지 마세요. 서비스가 설치된 소스 폴더를 계속 사용하므로 내부 디스크의 고정된 경로에 설치합니다.
+### 먼저, Jev에게 작은 열쇠 하나
+
+API 키는 **Jev를 사용할 수 있는 나만의 열쇠**라고 생각하면 됩니다. 보관함은 Mac의 **`~/.jev.env`**라는 작은 텍스트 파일입니다. 프로젝트 폴더 안에 넣지 않습니다.
+
+![케이브맨이 TypeSafe에서 열쇠를 받고, 개인 ~/.jev.env 파일에 보관한 다음 Codex에게 설치를 맡기는 3컷 만화.](docs/assets/key-setup-comic.png)
+
+**1. 열쇠를 받으세요.** [TypeSafe 키 발급 페이지](https://console.typesafe.ai/keys)를 열고 로그인하거나 계정을 만듭니다. API 키를 생성하고 다음 단계에서 사용할 수 있게 복사하세요. [공식 빠른 시작 문서](https://docs.typesafe.ai/introduction/quickstart)가 안내하는 페이지이며, 버튼 이름은 바뀔 수 있습니다.
+
+**2. 열쇠 보관함을 만드세요.** Mac에서 `Command + Space`를 누르고 `Terminal`을 검색한 뒤 Return을 눌러 **터미널**을 엽니다. 다음 명령을 한 줄씩 실행하세요. 이 명령에는 키를 넣지 않습니다.
+
+```sh
+touch "$HOME/.jev.env"
+chmod 600 "$HOME/.jev.env"
+nano "$HOME/.jev.env"
+```
+
+`touch`는 파일이 없으면 만들고, 기존 파일의 내용은 지우지 않습니다. `chmod 600`은 내 Mac 사용자만 읽고 쓸 수 있게 합니다. `nano`는 터미널 안에서 일반 텍스트 편집기를 엽니다.
+
+편집 화면에 다음 설정 이름을 적으세요.
+
+```text
+TYPESAFE_API_KEY=
+```
+
+**같은 줄의 `=` 바로 뒤에** 복사한 키를 붙여넣으세요. 값이 빈 상태로 두면 작동하지 않습니다. 이 설정이 이미 있다면 값만 바꾸고 다른 설정은 보존하세요. `export`나 추가 공백, 두 번째 줄은 필요하지 않습니다.
+
+**Control + O → Return**으로 저장하고, **Control + X**로 나옵니다. 여기서는 Command가 아니라 **Control** 키입니다.
+
+`~`는 내 홈 폴더, 이름 앞의 점은 숨김 파일이라는 뜻입니다. 실제 위치는 `/Users/내_MAC_사용자명/.jev.env`와 같습니다. 파일명은 **`.jev.env`** 그대로 사용하세요. **`.jev.env.txt`는 다른 파일**입니다. 이미 잘 쓰는 파일이 있다면 그대로 두고 새로 만드는 단계는 건너뛰세요.
+
+**3. 나머지는 Codex에게 맡기세요.** 아래 설치 프롬프트를 붙여넣고 파일이 준비됐다고만 알려주세요. **키 자체는 채팅·이슈·터미널 명령에 붙여넣지 않습니다.** 설치 도구가 파일을 확인하고 실제 smoke 요청으로 연결을 검사합니다. 이제 재미있는 것을 만드는 일로 돌아가면 됩니다.
+
+서비스는 설치한 소스 폴더를 계속 사용하므로 내부 디스크의 고정된 경로에 설치합니다.
 
 ### Codex에 설치를 맡기기
 
