@@ -23,6 +23,10 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 저장된 모델·제공자를 유지하므로 일반 사용은 새 공식 모델 대화에서 확인하세요.
 자세한 설정·복구·검증은 [제공자 격리 안내](docs/release/provider-isolation.md)를 참고하세요.
 
+기존 effort 메뉴를 유지하는 [Desktop 연결 후보](docs/release/native-desktop-bridge.md)도
+별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
+적용합니다. 실제 로그인 계정의 메뉴 검증은 미완료이며 일반 설치로 활성화되지 않습니다.
+
 ## 설치
 
 현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.

@@ -16,6 +16,10 @@ cache, retries, Plan advice and fallback. Invalid values fail before inference;
 missing effort defaults to medium. Ultra and native Desktop menu acceptance
 remain outside verified support.
 
+The optional [native Desktop candidate](../docs/release/native-desktop-bridge.md)
+uses standard effort enums for both entries without patching frontend assets.
+Auto ignores this client selection. Its UI gate remains pending.
+
 ## Local authentication
 
 After registering `jev`, run from the repository root:

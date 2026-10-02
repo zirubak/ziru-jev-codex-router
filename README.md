@@ -19,13 +19,17 @@ The aim is to use enough reasoning to do the job well, while avoiding unnecessar
 3. Send your usual prompts. With route display enabled, replies include `[gpt-6.1-sol / high]`.
 
 Normal Codex and the Desktop model picker keep their official OpenAI/ChatGPT
-provider and catalog. Jev is available only through an explicitly selected
+provider and catalog. The standard installation exposes Jev through an explicitly selected
 profile; the installer does not override `openai_base_url` or the global
 model catalog. Existing threads retain their provider/model identity. Start a
 fresh official-model thread for normal use.
 
 See [provider isolation](docs/release/provider-isolation.md) for configuration,
 recovery and verification details.
+
+An optional, build-specific [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
+keeps the existing effort menu and separates Auto/Manual by name. Signed-in
+native picker acceptance is still pending; ordinary installation does not enable it.
 
 ## Install
 

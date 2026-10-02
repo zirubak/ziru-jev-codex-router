@@ -24,12 +24,13 @@ umask 077
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--prepare-only]
+Usage: ./install.sh [--prepare-only | --desktop]
 
 Install Jev Codex Router from the embedded router fork.
 
   --prepare-only  Install the embedded router's dependencies without changing
                   Codex configuration, services, credentials, or local state.
+  --desktop       Also prepare the optional Desktop launcher; never start the app.
   -h, --help      Show this help.
 
 The full install preserves any configured router providers, adds or updates the
@@ -40,9 +41,11 @@ EOF
 }
 
 mode=install
+desktop=0
 case ${1:-} in
   "") ;;
   --prepare-only) mode=prepare ;;
+  --desktop) desktop=1 ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -57,7 +60,11 @@ JEV_PYTHON=$(command -v python3)
 export JEV_PYTHON
 JEV_ENV_FILE=${JEV_ENV_FILE:-$HOME/.jev.env}
 export JEV_ENV_FILE
-python3 "$repo_dir/server/install_preflight.py" ${1:-}
+if [ "$mode" = prepare ]; then
+  python3 "$repo_dir/server/install_preflight.py" --prepare-only
+else
+  python3 "$repo_dir/server/install_preflight.py"
+fi
 
 if [ "$mode" = prepare ]; then
   prepare_home=$(mktemp -d "${TMPDIR:-/tmp}/jev-codex-router-prepare.XXXXXX")
@@ -140,6 +147,9 @@ CODEX_HOME=$codex_home CODEX_ROUTER_STATE_DIR=$state_dir \
 python3 "$repo_dir/server/smoke.py"
 python3 "$transaction" validate
 python3 "$transaction" validate-isolation
+if [ "$desktop" = 1 ]; then
+  python3 "$repo_dir/server/install_desktop.py"
+fi
 python3 "$transaction" commit "$backup"
 trap - EXIT HUP INT TERM
 

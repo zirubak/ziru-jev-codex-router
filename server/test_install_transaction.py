@@ -115,6 +115,21 @@ if sys.argv[1:3]==['service','restart']:
                               env={**self.env, **flags}, capture_output=True,
                               text=True, timeout=20)
 
+    def test_desktop_opt_in_failure_restores_original_state(self) -> None:
+        desktop = self.state / "desktop"
+        desktop.mkdir()
+        (desktop / "manifest.json").write_text("original launcher state")
+        (self.repo / "server/install_desktop.py").write_text(
+            "import os,pathlib,sys\n"
+            "root=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])/'desktop'\n"
+            "(root/'manifest.json').write_text('failed candidate')\n"
+            "sys.exit(9)\n")
+        result = subprocess.run(["sh", str(self.repo / "install.sh"), "--desktop"],
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertEqual((desktop / "manifest.json").read_text(), "original launcher state")
+
     def test_fresh_install_enables_required_discovery_and_completes(self):
         result = self.run_install()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
