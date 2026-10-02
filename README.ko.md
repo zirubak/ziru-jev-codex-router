@@ -1,121 +1,63 @@
-![ZIRU Jev Codex Router](docs/assets/banner.png)
+<p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
 # ZIRU Jev Codex Router
 
-![preview](docs/assets/badges/preview.svg) ![platform](docs/assets/badges/platform.svg) ![license](docs/assets/badges/license.svg) ![node](docs/assets/badges/node.svg) ![python](docs/assets/badges/python.svg) ![stars](docs/assets/badges/stars.svg)
+**Codex가 작업 단계에 맞는 모델과 추론 깊이를 선택하도록 하세요.**
 
-[![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
+![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) [![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
 
-작업의 요구 품질과 실패 위험에 맞춰 모델과 effort를 선택하고, 구현·검증·리뷰·수정을 포함한 전체 토큰 절감을 목표로 하는 라우터입니다.
+[English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조)
 
-**비공개 preview · macOS Codex Desktop** · [English](README.md)
+ZIRU는 Codex Desktop의 모델 메뉴에 **Jev Codex Router**를 추가합니다. 이 항목을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다.
 
-## 동작 예시와 기능
+목표는 필요한 품질을 확보하면서 코딩·검사·리뷰·수정에 드는 불필요한 토큰 사용을 줄이는 것입니다. 버튼 문구를 바꾸는 일과 최종 보안 리뷰에는 서로 다른 접근이 필요하니까요.
 
-선택적 표시를 켜면 첫 응답 텍스트에 `[gpt-6.1-sol / high]`처럼 실제 제공된 모델과 effort를 표시합니다. 추론 시작 전 표시를 보장하지 않으며 구조화 JSON은 제외합니다. 깨끗한 연속 작업은 제한된 lease로 판단을 재사용하고 새 사용자 요청·오류·압축·도구 체인 변경 시 다시 판단합니다.
+## 한 번 선택하고, 평소처럼 작업하세요
 
+<p align="center"><img src="docs/assets/model-picker.png" width="340" alt="기존 모델 아래에 Jev Codex Router가 추가되고 선택된 Codex 모델 메뉴"></p>
 
-### 프롬프트 → 응답 예제
+*설치하면 기존 모델 메뉴에 Jev Codex Router가 추가됩니다. 원래 모델도 그대로 선택할 수 있습니다. 위 화면은 한 설치 환경의 예시이며, 자동 라우팅 후보는 아래에 설명한 세 모델입니다.*
 
-아래는 **형식을 설명하는 예제이며 실제 실행 기록이나 벤치마크가 아닙니다.**
-문맥·정책·도구 결과에 따라 모델과 effort가 달라질 수 있습니다. 표시를 켜면
-`[모델 / effort]`가 나오며, 그 뒤 본문은 Codex가 작성하므로 고정된 양식이
-아닙니다. 라우터가 판단 이유 전체를 자동으로 설명하는 것은 아닙니다.
+1. **설치 후 Codex를 재시작합니다.** 아래 안내대로 설치한 뒤 앱을 완전히 종료하고 다시 엽니다.
+2. **대화의 모델 메뉴에서 Jev Codex Router를 선택합니다.**
+3. **평소처럼 요청합니다.** 모델 표시를 켜면 응답에 `[gpt-6.1-sol / high]` 같은 라벨이 붙습니다.
 
-<details open>
-<summary>1. 작고 범위가 분명한 수정</summary>
+메뉴의 라우터 이름 옆에 보이는 **High**는 대화에서 선택한 설정입니다. 실제 요청에 사용된 모델과 effort는 응답 라벨에서 확인하며, 작업이 진행되면서 바뀔 수 있습니다. 직접 모델을 고르고 싶을 때는 같은 메뉴에서 일반 모델을 선택하면 됩니다.
 
-**프롬프트**
-```text
-저장 버튼을 변경사항 저장으로 바꿔줘. 해당 화면만 확인해줘.
-```
-**응답 예시**
-```text
-[gpt-6-luna / low]
+## 설치
 
-버튼 문구를 수정하고 해당 화면의 표시를 확인하겠습니다.
-```
-</details>
+현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/)가 필요합니다.
 
-<details>
-<summary>2. 원인 분석과 회귀 검사가 필요한 디버깅</summary>
+편집기로 개인 `~/.jev.env` 파일에 `TYPESAFE_API_KEY` 설정을 저장하세요. 파일은 저장소 밖에 두고 권한을 `600`으로 설정합니다. 키를 채팅이나 이슈에 붙여넣지 마세요. 서비스가 설치된 소스 폴더를 계속 사용하므로 내부 디스크의 고정된 경로에 설치합니다.
 
-**프롬프트**
-```text
-이 API가 가끔 중복 레코드를 반환해. 원인을 찾고 실패하는 회귀 검사를
-먼저 만든 뒤 수정하고 관련 검사를 실행해줘.
-```
-**응답 예시**
-```text
-[gpt-6.1-sol / high]
+### Codex에 설치를 맡기기
 
-중복 반환을 재현하고 쿼리·재시도 경로를 추적한 뒤 회귀 검사로 수정 결과를 확인하겠습니다.
-```
-</details>
-
-<details>
-<summary>3. 독립적인 최종 코드 리뷰</summary>
-
-**프롬프트**
-```text
-완성된 인증 변경을 정확성과 보안 관점에서 리뷰해줘. 심각도별 발견 사항,
-파일 위치, 검증이 부족한 부분을 알려줘.
-```
-**응답 예시**
-```text
-[gpt-6-astra / high]
-
-인증 경계와 변경된 검사·실패 경로를 확인하고 수정할 사항과 검증 공백을 보고하겠습니다.
-```
-</details>
-
-<details>
-<summary>4. Ultra를 직접 선택하도록 권고하는 경우</summary>
-
-**프롬프트**
-```text
-서로 독립적인 세 하위 시스템의 장애 근거를 조사하고 비교해줘.
-독립적인 병렬 조사가 이 작업에 실질적으로 도움이 될지도 판단해줘.
-```
-**응답 예시**
-```text
-[gpt-6-astra / max]
-
-[Jev Ultra 추천] 독립적인 조사·가설 검증을 병렬로 나누면 도움이 될 수 있습니다. Codex 모델 메뉴에서 GPT-6 Astra의 Ultra를 직접 선택하세요. 현재 Ultra는 실행 중이 아닙니다. 지원 클라이언트와 위임 권한이 필요하며, 로컬 Codex에서는 독립 작업의 하위 에이전트 위임을 명시적으로 요청하세요. 토큰 사용량이 늘 수 있습니다.
-
-먼저 각 하위 시스템의 조사가 독립적인지 확인하겠습니다.
-```
-권고만으로 모델이 바뀌거나 자동 위임이 켜지지는 않습니다. 기술적 Jev 오류의
-fallback도 `[gpt-6.1-sol / high]`로 표시되므로, prefix만으로 정상 선택과
-fallback을 구분할 수는 없습니다.
-</details>
-
-## 빠른 설치와 첫 실행
-
-macOS, Node.js 22.19 이상, Python 3.11 이상, Codex ChatGPT 로그인, private 저장소 접근 권한, private `.jev.env`의 TypeSafe 키가 필요합니다. 서비스 소스는 내부 디스크의 안정적인 경로에 둡니다.
-
-### Codex에 붙여넣을 설치 프롬프트
+아래 프롬프트를 Codex에 붙여넣으세요.
 
 ```text
 https://github.com/zirubak/ziru-jev-codex-router 를 내 Mac에 설치해줘.
-먼저 private 저장소에 인증된 접근이 가능한지 확인하고
-~/Documents/GitHub/ziru-jev-codex-router 에 clone해줘. 경로가 이미 있으면
-기존 변경을 보존해. README와 프로젝트 지침을 읽고 macOS, Node.js 22.19 이상,
-Python 3.11 이상, Codex 로그인, 로컬 포트 충돌을 확인해줘.
-내 private ~/.jev.env를 JEV_ENV_FILE로 사용해. 키 값은 채팅·명령 인자·Git에
-출력하거나 복사하지 마. 파일이 없으면 키 값 대신 파일 위치만 물어봐.
-루트 ./install.sh transaction과 내장 router를 사용하고 다른 router를 clone하지 마.
-관련 없는 Codex 설정과 기존 서비스를 보존해. 알 수 없는 서비스가 포트를
-쓰면 종료시키지 말고 중단해서 알려줘.
-문서의 진단과 smoke test로 설치를 검증하고 [모델 / effort] 표시를 켜줘.
-검사 결과, 복원 실패 여부와 설치 revision을 보고해줘. Codex 종료·재시작은
-내가 하도록 남겨두고 Jev 선택과 일반 모델 복귀 방법을 안내해줘.
-health 확인만으로 설치 성공이라고 보고하지 마.
+먼저 README와 프로젝트 지침을 읽어줘. 인증된 저장소 접근을 확인하고
+~/Documents/GitHub/ziru-jev-codex-router 에 clone하되 기존 폴더와 변경은 보존해.
+macOS, Node.js 22.19 이상, Python 3.11 이상, Codex 로그인과 필요한 포트를 확인해.
+내 개인 ~/.jev.env를 JEV_ENV_FILE로 사용해. 키 값을 채팅·명령 인자·Git에
+출력하거나 복사하지 마. 파일이 없으면 개인 파일의 위치를 물어보고,
+아직 키가 없으면 발급 방법을 안내해줘.
+내장 router와 실패 복원 기능을 사용하는 루트 ./install.sh로 설치해.
+관련 없는 설정과 서비스를 보존하고, 모르는 서비스가 포트를 쓰면 종료하지
+말고 중단해서 알려줘.
+[모델 / effort] 표시를 켜고 문서의 status, doctor, smoke 검사를 실행해.
+health 확인만으로 설치 성공이라고 판단하지 마.
+설치한 revision, 검사 결과와 복원 실패 여부를 보고해줘.
+Codex 재시작은 내가 하도록 남겨두고, Jev Codex Router 선택 방법과
+일반 모델로 돌아가는 방법을 알려줘.
 ```
 
-### 직접 설치
+설치에는 사용량이 발생할 수 있는 실제 smoke 요청이 포함됩니다. 마지막 앱 재시작은 사용자가 직접 합니다.
 
-GitHub CLI에 로그인한 후 실행합니다. private 키 파일은 먼저 편집기로 준비하며 `TYPESAFE_API_KEY` 항목이 있어야 합니다. 키 값은 설치 프롬프트에 넣지 마세요.
+<details>
+<summary><strong>터미널에서 직접 설치하려면</strong></summary>
+
+먼저 GitHub CLI에 로그인하고 개인 키 파일을 준비합니다. 설치 폴더가 이미 있다면 내용을 확인한 뒤 진행하세요.
 
 ```sh
 gh repo clone zirubak/ziru-jev-codex-router "$HOME/Documents/GitHub/ziru-jev-codex-router"
@@ -124,7 +66,7 @@ chmod 600 "$HOME/.jev.env"
 JEV_ENV_FILE="$HOME/.jev.env" ./install.sh
 ```
 
-설치는 사용량이 발생할 수 있는 실제 smoke 요청을 포함합니다. `./install.sh --prepare-only`는 서비스 활성화 없이 의존성을 준비합니다. 직접 Codex를 종료·재시작하고 **Jev Codex Router**를 선택한 뒤 표시와 진단을 확인합니다.
+저장소 루트에서 모델 표시를 켜고 설치를 확인합니다.
 
 ```sh
 touch "$HOME/.codex/codex-router/jev-router.signature"
@@ -133,123 +75,120 @@ bin/jev-codex-router router doctor
 bin/jev-codex-router smoke
 ```
 
-## 모델·effort·fallback
+Codex를 종료하고 다시 연 뒤 **Jev Codex Router**를 선택합니다. 서비스를 활성화하지 않고 의존성만 준비하려면 `./install.sh --prepare-only`를 사용하세요. 설치 세부 사항과 복구 방법은 [운영 안내](server/INSTALL.md)에 있습니다.
 
-| 자동 후보 | effort |
+</details>
+
+## 이렇게 보입니다
+
+아래는 응답 형식을 설명하는 예제이며, **실제 실행 기록이나 특정 모델 선택을 보장하는 결과가 아닙니다.** 문맥과 도구 결과에 따라 선택이 달라집니다. 본문은 Codex가 작성하며, Jev는 모델과 effort를 정합니다. 판단 이유 전체가 자동으로 표시되지는 않습니다.
+
+**간단한 수정**
+
+> 저장 버튼을 변경사항 저장으로 바꿔줘. 대화상자에서 잘 보이는지도 확인해줘.
+
+```text
+[gpt-6-luna / low]
+
+버튼 문구를 수정하고 대화상자의 배치를 확인하겠습니다.
+```
+
+**원인 분석이 필요한 버그**
+
+> 이 API가 가끔 중복 레코드를 반환해. 원인을 찾고, 실패하는 검사를 만든 다음 고쳐줘.
+
+```text
+[gpt-6.1-sol / high]
+
+중복 반환을 재현하고 쿼리와 재시도 경로를 추적한 뒤,
+회귀 검사로 수정 결과를 확인하겠습니다.
+```
+
+**완성된 코드의 최종 리뷰**
+
+> 완성된 로그인 변경을 정확성과 보안 관점에서 리뷰해줘. 문제가 있으면 파일 위치도 알려줘.
+
+```text
+[gpt-6-astra / high]
+
+인증 경계와 실패 경로를 확인하고, 발견한 문제를 파일 위치와 함께
+심각도순으로 정리하겠습니다.
+```
+
+라벨은 각 assistant 메시지의 첫 텍스트와 함께 표시되며, 모델이 추론을 시작하기 전에 미리 표시되지는 않습니다. 구조화된 JSON 출력에는 붙이지 않습니다. 도구를 실행하거나 새 요청을 보낸 뒤에는 다른 모델과 effort가 표시될 수 있습니다.
+
+## 모델을 고르는 기준
+
+*Effort*는 모델이 얼마나 깊게 추론할지 정하는 설정입니다. Jev는 남은 작업, 실패 위험, 확보한 근거를 보고 판단하며, 프로젝트의 [라우팅 정책](server/routing_policy.py)과 [연구 참고 자료](server/routing_reference.py)를 사용합니다.
+
+| 자동 후보 | 주로 맡는 작업 | 선택 가능한 effort |
+| --- | --- | --- |
+| GPT-6 Luna | 결과를 쉽게 확인할 수 있는 작은 수정 | low · medium · high · xhigh · max |
+| GPT-6.1 Sol | 일반적인 구현과 디버깅 | low · medium · high · xhigh · max |
+| GPT-6 Astra | 아키텍처, 독립 최종 리뷰, 위험 중심 리뷰 | low · medium · high · xhigh · max |
+
+현재 정책은 위 리뷰·아키텍처 범주에 Astra를 사용하고, effort는 별도로 판단합니다. 문제가 없는 연속 작업에서는 판단을 제한적으로 재사용합니다. 새 사용자 요청, 오류, 문맥 압축, 도구 체인 변경이 있으면 다시 판단합니다.
+
+**Jev에 기술적인 오류가 생기거나 키·작업 정보가 없으면** **GPT-6.1 Sol / high / Standard**로 실행을 이어갑니다. Sol/high 라벨만으로 정상 선택과 오류 시 대체 실행을 구분할 수는 없으며, 로컬 진단에서 확인할 수 있습니다. Kill switch, shadow mode, 모델 사용량 소진에는 [별도 처리](server/INSTALL.md)가 적용됩니다.
+
+**Ultra는 사용자가 직접 선택합니다.** 독립적인 작업을 병렬로 나누면 도움이 될 때 라우터가 일반 Sol 또는 Astra 모델의 Ultra를 선택하도록 권할 수 있습니다. 현재 권고 문구는 한국어입니다. 권고만으로 모드가 바뀌거나 위임이 켜지지는 않으며, 클라이언트 지원과 위임 권한이 필요합니다. Ultra는 토큰을 더 사용할 수 있습니다.
+
+## 비용은 얼마나 줄어드나요?
+
+절감이 목표지만, **현재 정책의 신뢰할 수 있는 절감률은 아직 없습니다.** 일부 요청은 작은 모델이나 낮은 effort로 사용량을 줄일 수 있지만, 추가 추론·재시도·Jev 판단 비용이 생길 수도 있습니다. 비교해야 할 것은 필요한 품질로 전체 작업을 마치는 데 드는 비용입니다.
+
+2026-10-01 관측 자료에는 **라우팅 호출 887회**가 있습니다. 완료된 작업 887개라는 뜻은 아닙니다.
+
+| 측정 항목 | 관측 결과 |
 | --- | --- |
-| GPT-6 Luna | low, medium, high, xhigh, max |
-| GPT-6.1 Sol | low, medium, high, xhigh, max |
-| GPT-6 Astra | low, medium, high, xhigh, max |
+| 모델 선택 | Sol 6.1: 753회 · Astra: 134회 |
+| Jev 판단 / 판단 재사용 | 566회 / 321회 |
+| 사용량이 관측된 880회의 입력 토큰 | 133,127,030개, 이 중 캐시 토큰 41,673,216개 |
+| 관측된 Jev 입력 토큰 | 1,596,027개 |
+| 전체 작업 토큰 절감률 / 금액 절감률 | 미확인 / 미확인 |
 
-프로젝트 아키텍처·독립 최종 코드 리뷰·위험 중심 리뷰는 Astra를 사용하고 effort는 별도로 판단합니다. 기술적인 Jev 오류·키/작업 부재는 **Sol 6.1 / high / Standard**로 fallback합니다. Kill switch·shadow·native 사용량 소진은 별도 기존 정책입니다.
+판단을 321회 재사용해 라우팅 호출의 36.2%에서 Jev 호출을 줄였습니다. **토큰이나 비용을 36.2% 절감했다는 뜻은 아닙니다.** 7회는 캐시 사용량이 기록되지 않았고, 요율과 작업 단위 측정도 불완전합니다. [측정 범위와 계산 방법](docs/COSTS.md)을 참고하세요.
 
-Ultra는 native Sol/Astra에서 사용자가 직접 선택하도록 권고하며 자동 위임 활성화를 주장하지 않습니다. 연구 자료는 판단 참고 근거이며 실제 품질·절감 성과를 보장하지 않습니다.
+Codex 구독료, 사용량 크레딧, API 환산액, TypeSafe 요금은 별개입니다. 사용량이 줄어도 정액 월 구독료가 낮아지지는 않습니다. 과거 [약 60% 시뮬레이션](BACKTEST.md)은 역사적 참고 자료이며 현재 정책의 성과가 아닙니다.
 
-## 비용과 측정 한계
-
-현재 정책 관측 887회 중 Sol 6.1은 753회, Astra는 134회입니다. 완료된 작업 887개를 뜻하지 않습니다.
-
-| 항목 | 관측 결과 |
-| --- | --- |
-| 캐시 사용량 관측 | 880회, 미확인 7회 |
-| 입력 토큰 | 133,127,030 |
-| 입력에 포함된 캐시 토큰 | 41,673,216 (31.3%) |
-| Jev 판단 / lease 재사용 | 566 / 321 |
-| Jev 관측 입력 토큰 | 1,596,027 |
-| 전체 작업 토큰·금액 절감률 | unknown |
-
-lease가 판단 호출 36.2%를 피했다는 결과는 전체 토큰·비용 36.2% 절감을 뜻하지 않습니다. [계산 범위](docs/COSTS.md)를 참고하세요. 구독료·Codex 크레딧·API 환산액·TypeSafe 요금을 구분합니다. 과거 약 60% 시뮬레이션은 [역사적 참고](BACKTEST.md)이며 현재 성과가 아닙니다.
-
-## 구조와 전송 데이터
+## 동작 구조
 
 ```mermaid
 flowchart TD
-    C[Codex Desktop: jev/auto] --> R[내장 라우터: 인증된 loopback]
-    R --> J[Jev 판단 서버: loopback 4319]
-    J --> D[제한된 판단 자료]
-    D --> T[TypeSafe 직접 API: systemone]
-    T --> P[검증된 모델·effort·제한된 lease]
-    P --> J
-    J -->|전체 canonical 요청 + 선택된 모델| R
-    R -->|공유 ChatGPT 세션의 native 요청| O[OpenAI: Luna / Sol / Astra]
-    O --> R
-    R -->|응답 스트림| J
-    J -->|활성화된 경우 실제 모델 표시| R
+    C[Codex Desktop] -->|Jev Codex Router 선택| R[로컬 내장 라우터]
+    R --> J[로컬 Jev 판단 서버]
+    J -->|제한된 판단 자료| T[TypeSafe 직접 API]
+    T -->|모델과 effort 판단| J
+    J -->|선택한 모델과 전체 실행 요청| R
+    R -->|공유 ChatGPT 세션| O[OpenAI: Luna / Sol / Astra]
+    O -->|응답 스트림| R
+    R -->|Jev 요청의 응답| J
+    J -->|선택적 모델 표시와 응답| R
     R --> C
-    J --> L[private 로컬 판단·사용량 로그]
 ```
 
-두 번째 라우터 통과는 native 모델 ID를 사용해 재귀적인 Jev 호출을 피합니다. TypeSafe에는 사용자 텍스트·최근 문맥·도구 발췌를 포함할 수 있는 제한된 판단 자료를 보냅니다. 실행 모델에는 전체 canonical 요청을 전달합니다. Jev는 `https://api.typesafe.ai/v1/systemone`으로 직접 호출하며 Vercel을 사용하지 않습니다. 키·로그·백업은 게시하지 않습니다.
+TypeSafe에는 사용자 텍스트, 최근 문맥, 도구 결과 발췌가 포함될 수 있는 **분량이 제한된 판단 자료**를 보냅니다. 선택된 OpenAI 모델에는 **전체 canonical 실행 요청**을 전달하므로, 실행 문맥을 이 판단 자료로 대체하지 않습니다. 두 번째 라우터 통과에서는 일반 모델 ID를 사용해 Jev가 재귀적으로 호출되지 않도록 합니다.
 
-## 문제 해결·제거·출처·기여
+Jev 요청은 `https://api.typesafe.ai/v1/systemone`으로 직접 보내며 Vercel을 거치지 않습니다. 로컬 서비스는 loopback 주소에서 동작합니다. 인증 정보와 판단·사용량 로그는 로컬에 저장됩니다. 이 파일이나 설치 백업을 게시하지 마세요. [보안 안내](SECURITY.md)에서 자세히 설명합니다.
 
-```sh
-bin/jev-codex-router report --days 7 --policy current
-bin/jev-codex-router update
-bin/jev-codex-router router providers generic disable jev
-```
+## 도움말과 문서
 
-Jev 비활성화는 다른 provider를 유지합니다. 전체 제거는 다른 클라이언트의 서비스 공유 여부를 확인하고 [운영 안내](server/INSTALL.md)를 따릅니다. 백업 전체를 최신 설정에 덮어쓰지 마세요.
+모델이 보이지 않거나 요청이 실패하면 `bin/jev-codex-router router doctor`부터 확인하세요. [운영 안내](server/INSTALL.md)에 진단, 업데이트, Jev 비활성화, 전체 제거, 공유 서비스 주의 사항과 설치 복구 방법이 있습니다.
 
-[지원 범위](docs/SUPPORT.md) · [출시 검사](docs/RELEASING.md) · [보안](SECURITY.md) · [기여](CONTRIBUTING.md)
+| 문서 | 내용 |
+| --- | --- |
+| [운영 안내](server/INSTALL.md) | 설치·진단·업데이트·제거 |
+| [지원 범위](docs/SUPPORT.md) | 지원 환경과 검증 한계 |
+| [비용](docs/COSTS.md) | 측정한 항목과 아직 모르는 항목 |
+| [기여](CONTRIBUTING.md) | 검사와 기여 방법 |
+| [출시](docs/RELEASING.md) | 출시 검사; 공개 전환 때 진행할 Star History 설정 |
 
+**Windows는 검증하지 못했습니다.** 제작자는 Windows 설치와 전체 동작을 시험하지 못했습니다. 루트 설치 도구는 macOS launchd를 사용하며, 이식 가능한 `router/`의 CI가 Windows 제품 지원을 뜻하지는 않습니다. Windows 사용자가 격리된 환경에서 해당 구성요소를 시험하고 [피드백](https://github.com/zirubak/ziru-jev-codex-router/issues)을 남겨주시면 도움이 됩니다. OS·Node.js·Codex 버전, commit, 재현 절차와 비밀을 제거한 오류를 포함해주세요. 키·인증 파일·원시 대화·백업은 첨부하지 마세요.
 
-## 플랫폼 한계와 테스트 피드백
+## 출처와 ZIRU
 
-이번 preview의 지원 대상은 **macOS Codex Desktop**입니다. 제작자는 Windows
-설치와 전체 동작을 수동으로 검증하지 못했습니다. 루트 설치 도구는 macOS의
-launchd를 사용하므로 Windows용 설치 도구로 지원하지 않습니다. 내장 router의
-이식성 CI와 제품 전체 지원은 별개이며, Windows CI 통과만으로 Windows 설치
-지원이 확인되는 것은 아닙니다.
+[0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router)의 commit `8701ef788aa8cb0948f299538747fb01029d32b8`을 기반으로 만들었습니다. 원본 MIT 저작권·허가문은 [LICENSE](LICENSE)에 유지하며, 내장 라우터의 출처와 별도 라이선스는 [ROUTER_FORK.md](ROUTER_FORK.md)에 기록했습니다.
 
-저장소 접근 권한이 있는 Windows 사용자의 테스트와 피드백을 환영합니다.
-격리된 환경에서 이식 가능한 `router/` 구성요소를 시험하고
-[GitHub Issues](https://github.com/zirubak/ziru-jev-codex-router/issues)에 Windows·
-Node.js·Codex 버전, 시험한 commit, 재현 절차, 기대 결과와 실제 결과, 비밀을
-제거한 오류를 알려주세요. API 키·인증 파일·원시 대화·설치 백업은 첨부하지
-마세요.
+ZIRU는 연구 자료를 반영한 라우팅 정책, 현재의 세 모델 후보, Sol/high 기술적 fallback, 응답의 모델 표시, Ultra 수동 권고와 설치 보호 기능을 더했습니다.
 
-## 브랜드 이미지
-
-상단 배너와 아래 공유용 이미지는 README와 저장소에 포함돼 있습니다.
-GitHub의 별도 Social preview 설정 적용은 이번 출시의 완료 조건에서 제외합니다.
-
-![ZIRU 프로젝트 미리보기](docs/assets/social-preview.png)
-
-## 출처와 ZIRU 변경점
-
-[0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router)를 기반으로 발전시켰으며, base commit은 `8701ef788aa8cb0948f299538747fb01029d32b8`입니다. [MIT 라이선스](LICENSE)와 [embedded router 출처](ROUTER_FORK.md)를 유지합니다.
-
-ZIRU는 연구 기반 모델·effort 판단, 최신 3개 후보, Sol/high 기술적 fallback, 응답 prefix, Ultra 수동 권고와 설치 보호를 보강했습니다.
-
-## ZIRU 블로그
-
-프로젝트의 실험과 AI 코딩 활용 이야기는 [ZIRU의 Medium 블로그](https://medium.com/@jh.baek.sd)에서 읽고 팔로우할 수 있습니다. 코드와 검증 자료에 더해 긴 설명을 확인할 수 있도록 연결했습니다.
-
-Jev만 제거하려면 provider를 비활성화하고 picker를 숨긴 후 Jev 서비스를 중지합니다.
-
-```sh
-bin/jev-codex-router router providers generic disable jev
-router/bin/control picker set jev/auto hide
-launchctl bootout "gui/$(id -u)/com.thibaultsaintjean.jev-router"
-```
-
-로그인 시 다시 시작하지 않도록 Label과 소스 경로가 이 설치에 속함을 확인한 후
-`~/Library/LaunchAgents/com.thibaultsaintjean.jev-router.plist`만 제거합니다.
-전체 Codex 통합 제거는 `bin/jev-codex-router router uninstall`을 사용합니다.
-공유 세션도 해제하려면 `bin/jev-codex-router router chatgpt-session disable`을
-사용하되, 다른 로컬 클라이언트가 그 세션을 쓰는 경우 영향을 확인하세요.
-다른 등록 클라이언트가 남으면 공유 서비스는 보존됩니다. 직접 Codex를 재시작하고
-native 모델 선택과 `router status`로 제거를 확인합니다. 키·로그·백업은 삭제하지 않습니다.
-
-## Star History
-
-아래는 [Star History](https://www.star-history.com/) 서비스의 손그림 스타일 그래프이며 밝은·어두운 테마를 지원합니다. **현재 저장소는 private이고 인증 없는 그래프 요청이 HTTP 403으로 거절됐으므로, 실제 그래프 표시를 검증하지 못했으며 이미지가 보이지 않을 수 있습니다.** 공개 데이터에 접근 가능한 경우 사용할 연동을 준비한 상태이며 저장소는 private을 유지합니다. GitHub 토큰을 이미지 주소에 넣거나 서비스에 전달하지 않았습니다. 기존 자체 제작 그래프는 화면에서 제외했습니다.
-
-<a href="https://www.star-history.com/#zirubak/ziru-jev-codex-router&amp;Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date&amp;theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date" />
-    <img alt="Star History chart — unavailable while this repository is private" src="https://api.star-history.com/chart?repos=zirubak/ziru-jev-codex-router&amp;type=date" />
-  </picture>
-</a>
+프로젝트를 만들며 얻은 실험 결과와 AI 코딩 활용 이야기는 [ZIRU의 Medium 블로그](https://medium.com/@jh.baek.sd)에서 읽을 수 있습니다. 저장소에는 [프로젝트 공유용 이미지](docs/assets/social-preview.png)도 포함되어 있습니다.
