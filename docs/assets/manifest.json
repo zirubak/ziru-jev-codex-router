@@ -18,5 +18,10 @@
     "width": 622,
     "height": 792,
     "sha256": "c8468a01292bbd146a48d32aef2a452a37eef68c5bfd9ea38b2d4aa42ad5b51a"
+  },
+  "quickstart-comic.png": {
+    "width": 2172,
+    "height": 724,
+    "sha256": "e2f53576d2b6c69121afd56576fe7311350a33016b49c39e7521483d1d7658fd"
   }
 }

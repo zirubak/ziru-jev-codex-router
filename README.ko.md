@@ -6,7 +6,7 @@
 
 ![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) [![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
 
-[English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조)
+[English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조) · [프로젝트에 스타 남기기](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
 ZIRU는 Codex Desktop의 모델 메뉴에 **Jev Codex Router**를 추가합니다. 이 항목을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다.
 
@@ -23,6 +23,10 @@ ZIRU는 Codex Desktop의 모델 메뉴에 **Jev Codex Router**를 추가합니�
 3. **평소처럼 요청합니다.** 모델 표시를 켜면 응답에 `[gpt-6.1-sol / high]` 같은 라벨이 붙습니다.
 
 메뉴의 라우터 이름 옆에 보이는 **High**는 대화에서 선택한 설정입니다. 실제 요청에 사용된 모델과 effort는 응답 라벨에서 확인하며, 작업이 진행되면서 바뀔 수 있습니다. 직접 모델을 고르고 싶을 때는 같은 메뉴에서 일반 모델을 선택하면 됩니다.
+
+![케이브맨 4컷 만화: Jev를 한 번 선택하고 평소처럼 요청하면 작업에 맞는 모델과 effort가 표시되어 코딩에 집중할 수 있습니다.](docs/assets/quickstart-comic.png)
+
+*오타 수정과 까다로운 버그 리뷰에는 서로 다른 모델·effort가 선택될 수 있습니다. 만화의 선택은 예시이며 보장된 결과가 아닙니다.*
 
 ## 설치
 

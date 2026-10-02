@@ -6,7 +6,7 @@
 
 ![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) [![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
 
-[한국어](README.ko.md) · [Install](#install) · [Examples](#what-youll-see) · [How it works](#how-it-works)
+[한국어](README.ko.md) · [Install](#install) · [Examples](#what-youll-see) · [How it works](#how-it-works) · [Star this project](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
 ZIRU adds **Jev Codex Router** to the model menu in Codex Desktop. Select it and keep working as usual: ask a question, fix a bug, or build a feature. Jev, from TypeSafe, chooses between **GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason.
 
@@ -23,6 +23,10 @@ The aim is to use enough reasoning to do the job well, while avoiding unnecessar
 3. **Send your usual prompts.** With the route display enabled, responses include a label such as `[gpt-6.1-sol / high]`.
 
 The **High** beside the router's name in the picker is the chat's selected setting. The route label in the response shows the model and effort actually served, which may change as the work progresses. Select an ordinary model in the same menu to leave automatic routing for that chat.
+
+![Four-panel caveman comic: choose Jev once, send normal coding requests, see task-appropriate model and effort labels, and keep coding.](docs/assets/quickstart-comic.png)
+
+*A typo fix and a tricky bug review can take different routes. These are examples, not guaranteed model choices.*
 
 ## Install
 
