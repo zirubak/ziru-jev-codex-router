@@ -1,0 +1,17 @@
+{
+  "banner.png": {
+    "width": 2172,
+    "height": 724,
+    "sha256": "da7e96023deb570915b025b22c239387ba979ab52de922b14ee379360eb72472"
+  },
+  "social-preview.png": {
+    "width": 1774,
+    "height": 887,
+    "sha256": "5c3054a6824e0640e7583b70bad10c0f0e4069f07b21e004f18f8c1db94bda69"
+  },
+  "mascot.png": {
+    "width": 1254,
+    "height": 1254,
+    "sha256": "392f0b54308a9b0fae66c6befd58d0295b166ce59682631f586f23408e8ba3d9"
+  }
+}
