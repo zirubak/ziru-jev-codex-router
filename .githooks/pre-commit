@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Refuse staged credentials without echoing their values."""
+import base64
+import re
+import hashlib
+import subprocess
+import sys
+PATTERN = re.compile(base64.b64decode('QUl6YVN5W0EtWmEtejAtOV8tXXsyNSx9fHNrLSg/OnByb2otfGFudC0pP1tBLVphLXowLTlfLV17MjAsfXxnaFtwb3VzXV9bQS1aYS16MC05XXsyMCx9fEFLSUFbQS1aMC05XXsxNn18LS0tLS1CRUdJTiBbQS1aIF0qUFJJVkFURSBLRVktLS0tLQ=='))
+files = subprocess.check_output(['git','diff','--cached','--name-only','--diff-filter=ACM','-z']).split(b'\0')
+ALLOWED = {
+    'router/scripts/verify-grok-service-tier.mjs': {'76291638580a809294c0ffbfa8dd71b20c87a8665a3e4f97fede0403a60fac59'},
+    'router/test/codex-native-session.test.mjs': {'d3d687a39148752ab485878cde8b9b0fa71994b7239f1215275f40df12f8d2e7'},
+    'router/test/routing.test.mjs': {'cf3abe0a1cd75cb90ed0bc9f25725044f8bfd8013c3cb59cc1bdeb925c37d7ef'},
+}
+failed = False
+for item in files:
+    if not item:
+        continue
+    data = subprocess.check_output(['git','show', ':' + item.decode()])
+    if any(hashlib.sha256(match.group()).hexdigest() not in ALLOWED.get(item.decode(), set())
+           for match in PATTERN.finditer(data)):
+        print('Possible credential in staged file: ' + item.decode(), file=sys.stderr)
+        failed = True
+sys.exit(int(failed))

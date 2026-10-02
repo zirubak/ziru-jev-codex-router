@@ -1,0 +1,360 @@
+[
+  {
+    "id": "mechanical-close",
+    "input": [
+      {
+        "role": "user",
+        "content": "Ferme uniquement issue #16, décision déjà validée, sans modifier le code."
+      }
+    ],
+    "models": [
+      "gpt-6-luna"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "An approved administrative action has no unresolved implementation or reasoning dependency."
+  },
+  {
+    "id": "implicit-goal",
+    "input": [
+      {
+        "role": "user",
+        "content": "Le parcours est pénible, rends ça plus simple pour les utilisateurs."
+      }
+    ],
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "rationale": "Ambiguous intent requires investigation; this local range is not a measured optimum for a model."
+  },
+  {
+    "id": "assent-mechanical",
+    "input": [
+      {
+        "role": "user",
+        "content": "Le nom du bouton est incorrect."
+      },
+      {
+        "role": "assistant",
+        "content": "Le remplacement exact est validé : renommer Export en Télécharger, sans autre modification."
+      },
+      {
+        "role": "user",
+        "content": "oui"
+      }
+    ],
+    "models": [
+      "gpt-6-luna"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "The preceding proposal supplies the exact approved replacement, so assent does not add complexity."
+  },
+  {
+    "id": "assent-investigate",
+    "input": [
+      {
+        "role": "user",
+        "content": "Les exports sont parfois incohérents."
+      },
+      {
+        "role": "assistant",
+        "content": "Il faut investiguer les transactions concurrentes et identifier la cause avant de choisir un correctif."
+      },
+      {
+        "role": "user",
+        "content": "oui"
+      }
+    ],
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "rationale": "Assent refers to unresolved concurrent transaction behavior; the short last message does not make it mechanical."
+  },
+  {
+    "id": "local-implementation",
+    "input": [
+      {
+        "role": "user",
+        "content": "Ajoute une fonction clamp(value, min, max) et trois tests simples en suivant le style existant."
+      }
+    ],
+    "models": [
+      "gpt-6-luna",
+      "gpt-6.1-sol"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "A bounded function with a stated contract and simple tests is a directly checkable implementation."
+  },
+  {
+    "id": "final-review",
+    "input": [
+      {
+        "role": "user",
+        "content": "Réalise une revue finale indépendante du code avant livraison."
+      }
+    ],
+    "models": [
+      "gpt-6-astra"
+    ],
+    "policy": "astra",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "rationale": "Final review requires Astra under local policy; unspecified code size does not justify one fixed effort."
+  },
+  {
+    "id": "security-review",
+    "input": [
+      {
+        "role": "user",
+        "content": "Fais une revue défensive des permissions de cette API."
+      }
+    ],
+    "models": [
+      "gpt-6-astra"
+    ],
+    "policy": "astra",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "rationale": "Risk-focused review requires Astra under local policy; the fixture does not establish a uniquely optimal depth."
+  },
+  {
+    "id": "architecture",
+    "input": [
+      {
+        "role": "user",
+        "content": "Établis le plan d'architecture technique du projet avant l'implémentation."
+      }
+    ],
+    "models": [
+      "gpt-6-astra"
+    ],
+    "policy": "astra",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "rationale": "Pre-implementation architecture requires Astra; broad allowed depth avoids equating that mandate with max effort."
+  },
+  {
+    "id": "review-completed",
+    "input": [
+      {
+        "role": "user",
+        "content": "Fais une revue finale puis ferme issue #16 si tout est bon."
+      },
+      {
+        "role": "assistant",
+        "content": "La revue finale indépendante est terminée et validée. Il ne reste qu'à confirmer la fermeture déjà effectuée."
+      },
+      {
+        "type": "function_call",
+        "call_id": "c",
+        "name": "close_issue",
+        "arguments": "{}"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "c",
+        "output": "Issue #16 closed successfully."
+      }
+    ],
+    "models": [
+      "gpt-6-luna"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "Only confirmation remains after completed review and successful tool evidence; completed complexity is not remaining work."
+  },
+  {
+    "id": "parallel-check-failure",
+    "input": [
+      {
+        "role": "user",
+        "content": "Exécute les deux vérifications et traite les résultats."
+      },
+      {
+        "type": "function_call",
+        "call_id": "a",
+        "name": "tests",
+        "arguments": "{}"
+      },
+      {
+        "type": "function_call",
+        "call_id": "b",
+        "name": "lint",
+        "arguments": "{}"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "a",
+        "output": "Tests failed: intermittent transaction inconsistency."
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "b",
+        "output": "lint passed"
+      }
+    ],
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "rationale": "An intermittent transaction failure remains unresolved despite a successful independent lint result."
+  },
+  {
+    "id": "bounded-verification-ko",
+    "input": [
+      {
+        "role": "user",
+        "content": "이미 승인한 단일 명령 python3 -m unittest tests.test_clamp를 실행하고 종료 코드와 통과/실패 개수만 보고해. 실패해도 지금은 원인 조사나 코드 수정 없이 결과만 알려줘."
+      }
+    ],
+    "models": [
+      "gpt-6-luna"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "Execution and factual reporting are explicitly bounded; test execution alone does not require deep inference."
+  },
+  {
+    "id": "interacting-debug-en",
+    "input": [
+      {
+        "role": "user",
+        "content": "Investigate a reproducible duplicate write that requires retry, cancellation, and transaction recovery to interleave. Existing traces disagree about which callback commits. Reconcile the traces, isolate the causal ordering, and add a regression test before changing the implementation. This is focused root-cause debugging within the existing design."
+      }
+    ],
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "rationale": "Interacting unresolved constraints and conflicting evidence justify deeper reasoning; no single setting is asserted to win."
+  },
+  {
+    "id": "explicit-hardest-depth-en",
+    "input": [
+      {
+        "role": "user",
+        "content": "Use max reasoning effort for this hardest remaining debugging step. Earlier high and xhigh attempts failed to reconcile a minimal trace where cancellation, lock ordering, and recovery each satisfy their local invariant but violate the joint invariant. All traces and a deterministic reproducer are available. Exhaustively compare the remaining causal hypotheses and derive a checkable regression test within the established design."
+      }
+    ],
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "max"
+    ],
+    "rationale": "Max is an explicit user request with concrete remaining depth and prior failures, not a public benchmark ground truth."
+  },
+  {
+    "id": "permission-blocked-ko",
+    "input": [
+      {
+        "role": "user",
+        "content": "검사 결과 배포 계정의 권한이 없다는 사실과 필요한 deploy:write 권한이 확인됐다. 지금 할 일은 이 확인된 원인과 관리자 권한 부여가 필요하다는 사실을 두 문장으로 보고하는 것뿐이다. 다른 자격 증명을 찾거나 재시도하거나 코드를 수정하지 마."
+      }
+    ],
+    "models": [
+      "gpt-6-luna",
+      "gpt-6.1-sol"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "The environmental permission prerequisite is already known; reporting it does not become solvable through more reasoning."
+  },
+  {
+    "id": "missing-runtime-en",
+    "input": [
+      {
+        "role": "user",
+        "content": "The integration command failed because Docker is not installed; command -v docker returned no path. The approved next action is only to report this missing prerequisite and that integration behavior is unverified. Do not install software, diagnose application bugs, or rerun the same command."
+      }
+    ],
+    "models": [
+      "gpt-6-luna",
+      "gpt-6.1-sol"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "low",
+      "medium"
+    ],
+    "rationale": "A confirmed missing runtime is an execution prerequisite, not evidence of a reasoning-depth failure in application code."
+  },
+  {
+    "id": "repeated-config-failure-ko",
+    "input": [
+      {
+        "role": "user",
+        "content": "작은 설정 파일 변경인데 추측으로 세 번 수정해도 같은 통합 테스트가 실패했고 총 사용 토큰만 늘었다. 설정 우선순위, 실제 로드 경로, 캐시된 값을 조사해서 근본 원인을 확인한 뒤 최소 수정과 필수 회귀 검증을 수행해. 완료 품질을 유지하면서 프로젝트 종료까지 조사·도구·수정·재시도·리뷰를 포함한 총 토큰을 줄이는 것이 목표다. 작은 diff라는 이유로 필수 검증이나 리뷰를 생략하지 마."
+      }
+    ],
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "policy": "normal",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "rationale": "Repeated failed guesses leave a causal investigation despite a small diff. Optimize completion tokens including verification and rework without skipping required checks; this range is a local hypothesis."
+  }
+]

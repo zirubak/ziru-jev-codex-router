@@ -1,0 +1,31 @@
+# Local run artifacts (never published)
+shadow-log.jsonl
+*.jsonl
+*.log
+*.log.*
+*.jsonl.*
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Secrets / local env
+.env
+*.secret
+
+# Private credentials, runtime records and local build output
+.jev.env
+*.env
+.bkit/
+.Codex/logs/
+.Codex/projects/
+.aider.chat.history.*
+.jev-compaction/
+.serena/
+.venv/
+node_modules/
+generated/
