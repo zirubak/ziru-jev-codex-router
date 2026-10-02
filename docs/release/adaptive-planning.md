@@ -74,7 +74,8 @@ platform lane is disabled to mask this local environment limitation.
 The owner requested that Windows testing remain advisory. The five required
 jobs remain in `ci.yml`; Windows keeps the same syntax checks, full suite and
 audit in `windows-advisory.yml`. Windows results remain visible and do not gate
-macOS product merges. This corrects the prior mismatch between the support
+macOS product merges. Windows runs only on manual dispatch; both workflows
+cancel superseded runs on the same PR/ref. This corrects the prior mismatch between the support
 disclosure and the combined workflow without changing runtime or test assertions.
 The previous Windows timeout remains unresolved. See
 [SUPPORT.md](../SUPPORT.md) and [RELEASING.md](../RELEASING.md) for the exact gate

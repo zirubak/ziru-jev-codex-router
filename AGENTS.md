@@ -20,6 +20,7 @@ the portable embedded router tests.
   `(cd router && npm run check && npm test)`. Preserve CI platform lanes.
   The five jobs in `.github/workflows/ci.yml` gate macOS product merges.
   Windows remains enabled in `windows-advisory.yml` as portability feedback;
+  run it by explicit manual dispatch only, not on each PR/main update.
   its pending, failed or cancelled result does not gate macOS merges/releases.
   Preserve its failure diagnostics and unverified Windows support disclosure.
 - One integrated code and Python specialist review of changed behavior is

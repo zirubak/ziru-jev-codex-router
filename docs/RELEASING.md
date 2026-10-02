@@ -54,6 +54,22 @@ On 2026-10-02, the protection and ruleset API reads returned HTTP 403 with
 No branch protection or ruleset update is claimed. The workflow split and
 documented owner merge policy apply independently of those unavailable settings.
 
+## Actions usage controls (2026-10-02)
+
+- Windows portability feedback is manual-only; keep its full assertions and
+  visible failure results without launching it on every PR or `main` push.
+- Both workflows cancel superseded runs for the same PR/ref.
+- Keep the five product jobs and their test commands; do not bypass required
+  checks to compensate for an account billing restriction.
+- CI run `37048612646` and advisory run `37048612592` did not start tests.
+  GitHub reported: `The job was not started because recent account payments
+  have failed or your spending limit needs to be increased. Please check the
+  'Billing & plans' section in your settings`. This message does not distinguish
+  failed payments from a spending limit; no actual charges are asserted.
+- Account budgets, payment methods and spending limits are separate from
+  repository workflows. No paid usage increase or account billing change is
+  authorized or claimed by this policy change.
+
 ## Deferred until an explicitly authorized public release
 
 Owner decision, 2026-10-01 (America/Los_Angeles): defer Star History setup until

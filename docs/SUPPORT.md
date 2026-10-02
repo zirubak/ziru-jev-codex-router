@@ -33,8 +33,9 @@ router job.
 ## Advisory Windows CI
 
 `.github/workflows/windows-advisory.yml` runs the existing Windows router
-syntax checks, full test suite and production dependency audit on pushes to
-`main`, pull requests and manual dispatches. Failures remain visible; they are
+syntax checks, full test suite and production dependency audit on explicit
+manual dispatches only. It does not run automatically on PR updates or `main`
+pushes. Failures remain visible; they are
 not converted to success or suppressed. A pending, failed or cancelled
 `Embedded router (windows-latest, advisory)` check does not block macOS product
 merges or releases. Do not add it to required branch checks or rulesets.
@@ -43,6 +44,10 @@ The previous combined run `37040055140` passed the five required jobs, but its
 Windows job hit a port-occupancy test timeout and was later cancelled at the
 workflow time limit. The cause is unresolved; moving the lane does not fix it
 or establish Windows product support.
+
+Both workflows cancel superseded runs for the same PR/ref. Required macOS
+product checks remain automatic and unchanged; documentation-only updates
+still produce their check results rather than leaving required checks pending.
 
 The Codex contract lane sets `CODEX_ROUTER_REQUIRE_REAL_CODEX=1`; absence of the
 binary is a failure, never a skip. It also checks the exact CLI version before

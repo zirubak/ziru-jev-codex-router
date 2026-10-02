@@ -1,13 +1,14 @@
 name: Windows advisory
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: windows-advisory-${{ github.ref }}
+  cancel-in-progress: true
 
 # Portability feedback only; never require this workflow for macOS releases.
 # Preserve failures as failures so Windows diagnostics remain visible.
