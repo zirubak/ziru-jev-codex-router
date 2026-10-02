@@ -52,3 +52,9 @@ changing visibility alone resolves the previously observed HTTP 403. Never put
 raw access tokens in README files, image URLs, commits or chat. This note is a
 future release checklist item, not authorization to change repository visibility
 or create credentials automatically.
+
+## Published previews
+
+- [v0.1.0-preview.1 notes](release/v0.1.0-preview.1.md) — first private macOS
+  preview, source `cf7c6c0b2ced07aa40b8c39f777c9dec8b9a18f2`.
+  [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.1).
