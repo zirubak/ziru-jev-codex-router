@@ -69,6 +69,17 @@ its two subtests before encountering a differently versioned installed Desktop
 CLI. Clean CI runners must verify the repository's pinned contract; no test or
 platform lane is disabled to mask this local environment limitation.
 
+## macOS merge policy correction (2026-10-02)
+
+The owner requested that Windows testing remain advisory. The five required
+jobs remain in `ci.yml`; Windows keeps the same syntax checks, full suite and
+audit in `windows-advisory.yml`. Windows results remain visible and do not gate
+macOS product merges. This corrects the prior mismatch between the support
+disclosure and the combined workflow without changing runtime or test assertions.
+The previous Windows timeout remains unresolved. See
+[SUPPORT.md](../SUPPORT.md) and [RELEASING.md](../RELEASING.md) for the exact gate
+names and repository-setting limitations.
+
 ## Rollback
 
 Revert the policy commit and restart the Jev service. No catalog, authentication

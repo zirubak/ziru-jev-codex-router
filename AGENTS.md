@@ -18,6 +18,10 @@ the portable embedded router tests.
 - Required checks: `python3 -m unittest discover -s server -p 'test_*.py'`,
   `python3 -m compileall -q server poc`, `python3 poc/eval_routing.py`, and
   `(cd router && npm run check && npm test)`. Preserve CI platform lanes.
+  The five jobs in `.github/workflows/ci.yml` gate macOS product merges.
+  Windows remains enabled in `windows-advisory.yml` as portability feedback;
+  its pending, failed or cancelled result does not gate macOS merges/releases.
+  Preserve its failure diagnostics and unverified Windows support disclosure.
 - One integrated code and Python specialist review of changed behavior is
   required. Reviewers are read-only; the owner stages and commits.
 - Installation uses the root transaction. Preserve unrelated settings and

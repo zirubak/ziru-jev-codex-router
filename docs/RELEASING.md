@@ -6,9 +6,11 @@ changelog and upstream release artifacts are not releases of this project.
 ## Before publishing
 
 - Identify the exact source commit and scoped fixes; link their issues.
-- Require all applicable checks in [SUPPORT.md](SUPPORT.md) to complete
-  successfully on that commit. Record skips and investigate failures rather
-  than lowering assertions or silently disabling a platform.
+- Require the five macOS product CI jobs listed in
+  [SUPPORT.md](SUPPORT.md) to complete successfully on that commit. Record
+  skips and investigate failures rather than lowering assertions or silently
+  disabling a platform. Windows runs separately as advisory portability
+  feedback; its pending, failed or cancelled result does not gate this release.
 - Review dependency/lockfile changes, licenses and audit output.
 - Review context preservation, retry boundaries, privacy, and migration impact
   for any affected component.
@@ -40,6 +42,17 @@ Branch protections and rulesets are repository settings, not implied by this
 document. Agree stable check names and merge policy before enforcing them;
 read back the actual GitHub settings before claiming protection. Do not make a
 new or failing platform check a required merge gate without qualification.
+The required job names are `Jev server (ubuntu-latest, Python 3.11)`,
+`Jev server (macos-latest, Python 3.12)`, `Embedded router (ubuntu-latest)`,
+`Embedded router (macos-latest)` and
+`Codex app-server contract (0.155.0-alpha.9.2)`. Exclude
+`Embedded router (windows-latest, advisory)` and the former
+`Embedded router (windows-latest)` from required checks.
+
+On 2026-10-02, the protection and ruleset API reads returned HTTP 403 with
+`Upgrade to GitHub Pro or make this repository public to enable this feature.`
+No branch protection or ruleset update is claimed. The workflow split and
+documented owner merge policy apply independently of those unavailable settings.
 
 ## Deferred until an explicitly authorized public release
 
