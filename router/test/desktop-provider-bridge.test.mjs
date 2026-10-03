@@ -153,8 +153,9 @@ import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { desktopArtifacts } from '../src/desktop-compatibility.mjs';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
 
 function rpcClient(input, output) {
@@ -226,11 +227,14 @@ test('native app-server preserves official config and confirms round-trip provid
   const config = `model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = ${JSON.stringify(catalog)}\n`;
   await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   const manifest = join(directory, 'bridge.json');
-  const appAsar = join(directory, 'app.asar');
-  await writeFile(appAsar, 'isolated application fixture');
+  const app = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY, '../../../../../../..');
+  const artifacts = desktopArtifacts(app);
   await writeFile(manifest, JSON.stringify({
-    version: 1, nativeBinary: process.env.JEV_DESKTOP_NATIVE_BINARY, provider, appAsar, routeStateDirectory: join(directory, 'private-routes'),
-    expectedAppSha256: createHash('sha256').update(await readFile(appAsar)).digest('hex'),
+    version: 1, codexHome: directory, nativeBinary: artifacts.nativeBinary, provider,
+    appExecutable: join(app, 'Contents/MacOS/ChatGPT'), appAsar: artifacts.appAsar,
+    bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
+    routeStateDirectory: join(directory, 'private-routes'),
+    expectedAppSha256: createHash('sha256').update(await readFile(artifacts.appAsar)).digest('hex'),
     expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
   }), { mode: 0o600 });
   const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
@@ -346,11 +350,10 @@ test('each native invocation disables Jev for missing or stale application pins'
   timeout: 90000,
 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-pins-'));
-  const appAsar = join(directory, 'app.asar');
-  await writeFile(appAsar, 'isolated application fixture');
+  const app = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY, '../../../../../../..');
+  const artifacts = desktopArtifacts(app);
   const pins = {
-    appAsar,
-    expectedAppSha256: createHash('sha256').update(await readFile(appAsar)).digest('hex'),
+    expectedAppSha256: createHash('sha256').update(await readFile(artifacts.appAsar)).digest('hex'),
     expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
   };
   const manifest = join(directory, 'bridge.json');
@@ -365,7 +368,12 @@ test('each native invocation disables Jev for missing or stale application pins'
       { expectedNativeSha256: '0'.repeat(64) },
       { routeStateDirectory: undefined },
     ]) {
-      await writeFile(manifest, JSON.stringify({ version: 1, nativeBinary: process.env.JEV_DESKTOP_NATIVE_BINARY, provider, routeStateDirectory: join(directory, 'private-routes'), ...pins, ...change }), { mode: 0o600 });
+      await writeFile(manifest, JSON.stringify({
+        version: 1, codexHome: directory, nativeBinary: artifacts.nativeBinary, provider,
+        appExecutable: join(app, 'Contents/MacOS/ChatGPT'), appAsar: artifacts.appAsar,
+        bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
+        routeStateDirectory: join(directory, 'private-routes'), ...pins, ...change,
+      }), { mode: 0o600 });
       const child = spawn(process.execPath, [fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)), 'app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
       const client = rpcClient(child.stdin, child.stdout);
       try {

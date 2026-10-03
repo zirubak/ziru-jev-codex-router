@@ -28,6 +28,20 @@ export function planDesktopLaunch(manifest, manifestPath, environment, observed)
     warning: compatible ? null : 'Desktop compatibility is unverified. Jev chats remain readable; reconnect before sending a Jev request.' };
 }
 
+export async function planQualifiedDesktopLaunch(manifest, manifestPath, environment, cacheDirectory, qualify = qualifyDesktop) {
+  planDesktopLaunch(manifest, manifestPath, environment, {});
+  let observed = { contractVerified: false };
+  let compatibilityError = null;
+  try {
+    await qualify({ app: manifest.app, cacheDirectory });
+    observed = { contractVerified: true };
+  } catch (error) {
+    if (error.code !== 'DESKTOP_INCOMPATIBLE') throw error;
+    compatibilityError = error;
+  }
+  return { plan: planDesktopLaunch(manifest, manifestPath, environment, observed), compatibilityError };
+}
+
 async function main() {
   if (process.platform !== 'darwin') throw new Error('Desktop integration requires macOS');
   const manifestPath = process.argv[2];
@@ -39,11 +53,12 @@ async function main() {
   if (commands.split('\n').some((line) => line.trim() === manifest.appExecutable)) {
     throw new Error('Codex is already running. Quit it yourself, then open this launcher. No process was stopped.');
   }
-  await qualifyDesktop({ app: manifest.app, cacheDirectory: path.join(path.dirname(manifestPath), 'qualifications') });
-  if (manifest.session) {
+  const { plan, compatibilityError } = await planQualifiedDesktopLaunch(
+    manifest, manifestPath, process.env, path.join(path.dirname(manifestPath), 'qualifications'));
+  if (compatibilityError) process.stderr.write(`Desktop compatibility: ${compatibilityError.message}\n`);
+  if (plan.mode === 'jev' && manifest.session) {
     execFileSync(manifest.session.python, [manifest.session.script, 'activate', manifestPath], { stdio: 'pipe' });
   }
-  const plan = planDesktopLaunch(manifest, manifestPath, process.env, { contractVerified: true });
   if (plan.warning) process.stderr.write(`${plan.warning}\n`);
   // The caller explicitly starts the app. Installation never invokes this path.
   const child = spawn(plan.executable, plan.args, { env: plan.env, detached: true, windowsHide: true, stdio: 'ignore' });

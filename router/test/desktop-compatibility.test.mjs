@@ -73,6 +73,17 @@ test('unsigned applications are rejected before probing or creating a receipt ca
   await assert.rejects(stat(options.cacheDirectory), { code: 'ENOENT' });
 });
 
+test('an artifact replacement during signature verification is rejected before qualification', async (t) => {
+  const { options, dependencies, files, calls } = await fixture(t);
+  dependencies.verifySignature = async () => {
+    calls.push('signature');
+    await writeFile(files.appAsar, 'replacement after signature check');
+  };
+  await assert.rejects(qualifyDesktop(options, dependencies), /changed during signature verification/);
+  assert.deepEqual(calls, ['signature']);
+  await assert.rejects(stat(options.cacheDirectory), { code: 'ENOENT' });
+});
+
 test('failed qualification never publishes a success receipt', async (t) => {
   for (const result of ['rejected', 'missing-version']) {
     await t.test(result, async (subtest) => {

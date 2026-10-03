@@ -112,8 +112,12 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
   const fingerprint = dependencies.contractDigest ?? contractDigest;
   const probe = dependencies.probe ?? (async (binary) =>
     (await import('./desktop-contract-probe.mjs')).probeDesktopContract(binary));
-  await sign(app);
   const before = await identity(app);
+  await sign(app);
+  const afterSignature = await identity(app);
+  if (JSON.stringify(before) !== JSON.stringify(afterSignature)) {
+    throw new Error('Desktop changed during signature verification; reopen after the update finishes');
+  }
   const expected = { ...before, contractVersion: CONTRACT_VERSION, contractDigest: await fingerprint() };
   let receiptFile;
   let receipt;
@@ -123,9 +127,18 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
     receipt = readReceipt(receiptFile, expected);
   }
   if (!receipt) {
-    await hook(app);
-    const result = await probe(desktopArtifacts(app).nativeBinary);
-    if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) throw new Error('Native contract returned no version evidence');
+    try { await hook(app); }
+    catch (error) {
+      throw Object.assign(new Error(error.message), { code: 'DESKTOP_INCOMPATIBLE' });
+    }
+    let result;
+    try { result = await probe(desktopArtifacts(app).nativeBinary); }
+    catch (error) {
+      throw Object.assign(new Error(error.message), { code: 'DESKTOP_INCOMPATIBLE' });
+    }
+    if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) {
+      throw Object.assign(new Error('Native contract returned no version evidence'), { code: 'DESKTOP_INCOMPATIBLE' });
+    }
     receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
       checks: result.checks, checkedAt: new Date().toISOString() };
   }

@@ -46,9 +46,11 @@ open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
 ```
 
 위 경로는 기본 상태 디렉터리를 기준으로 합니다. 별도 경로를 설정했다면 설치기가
-알려준 경로를 사용하세요. 원래 앱 아이콘으로 열면 공식 연결을 사용합니다.
-Desktop 연결은 앱 빌드별로 검증되며, 지원되지 않는 앱 업데이트 후에는 일반 Codex로
-열립니다. [지원 빌드와 복구 안내](docs/release/native-desktop-bridge.md)를 참고하세요.
+알려준 경로를 사용하세요. 설치기는 GUI 세션의 일반 앱 실행과 updater 재실행에도
+브리지를 등록합니다. 서명된 앱 업데이트는 새 빌드의 네이티브 계약으로 자동 검증됩니다.
+검증에 실패해도 저장된 Jev 대화는 읽을 수 있지만 Jev 추론은 복구 오류로 거부됩니다.
+공식 모델은 기존 제공자와 기본값을 유지합니다.
+[지원 빌드와 복구 안내](docs/release/native-desktop-bridge.md)를 참고하세요.
 
 ## 기존 설치 업데이트
 
@@ -100,8 +102,9 @@ Desktop 연결을 사용한다면 검증된 Jev 실행기로 다시 여는 방�
 충분하지 않습니다. 정상 종료되지 않을 때만 저장 가능한 작업을 저장하고 macOS
 **강제 종료**(**Option+Command+Escape**)를 사용하세요. 매번 강제 종료할 필요는 없습니다.
 
-Desktop 연결을 사용한다면 원래 앱 아이콘 대신 설치기가 알려준 `Jev Codex.command`로
-다시 여세요. 기본 상태 디렉터리에서는 다음 명령을 사용합니다.
+Desktop 연결을 사용한다면 설치기가 알려준 `Jev Codex.command`를 열어 호환성을 확인하고
+GUI 세션 연결을 복원하세요. 이후 일반 앱 실행은 같은 연결을 사용합니다.
+기본 상태 디렉터리에서는 다음 명령을 사용합니다.
 
 ```sh
 open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
