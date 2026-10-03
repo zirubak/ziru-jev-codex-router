@@ -1533,6 +1533,12 @@ function upstreamHeaders(requestHeaders, body, apiKey, provider, extraHeaders = 
     if (provider.protocol === "vertex" && lower === "anthropic-version") continue;
     if (provider.authProfile === "github-copilot" && providerIdentityHeaders.has(lower)) continue;
     if (lower.startsWith("x-msh-") || lower.startsWith("x-codex-")) continue;
+    if (lower === "x-openai-internal-codex-responses-lite"
+        && provider.generic === true && provider.id === "jev"
+        && provider.protocol === "openai-responses" && value === "true") {
+      headers[lower] = value;
+      continue;
+    }
     if (lower.startsWith("x-openai-") || lower === "chatgpt-account-id") continue;
     if (lower === "originator" || lower === "user-agent" || lower === "accept-encoding") {
       continue;

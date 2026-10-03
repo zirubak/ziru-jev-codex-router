@@ -23,6 +23,10 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 저장된 모델·제공자를 유지하므로 일반 사용은 새 공식 모델 대화에서 확인하세요.
 자세한 설정·복구·검증은 [제공자 격리 안내](docs/release/provider-isolation.md)를 참고하세요.
 
+기존 effort 메뉴를 유지하는 [Desktop 연결 후보](docs/release/native-desktop-bridge.md)도
+별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
+적용합니다. 실제 로그인 계정의 메뉴 검증은 미완료이며 일반 설치로 활성화되지 않습니다.
+
 ## 설치
 
 현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
@@ -110,6 +114,24 @@ bin/jev-codex-router smoke
 
 </details>
 
+## 두 선택 모드
+
+격리된 Jev 프로필에 두 경로가 있습니다. `codex -p jev`는 Auto를 선택합니다.
+`codex -p jev -m jev/manual -c model_reasoning_effort=high`는 일반 모드의 High를 선택합니다.
+
+| 경로 | 광고된 effort | 동작 |
+| --- | --- | --- |
+| Jev Codex Router by Auto (`jev/auto`) | Auto 하나 | Jev가 모델과 effort 선택 |
+| Jev Codex Router (`jev/manual`) | low (Light), medium, high, xhigh, max | Jev가 모델 선택, 코드는 사용자 effort 유지 |
+
+일반 모드는 effort 누락 시 medium을 사용하며 잘못된 값은 inference 전에 거부합니다.
+캐시 전환·재시도·fallback에서 선택을 유지합니다. Auto의 선택 sentinel은 실행 모델에
+전달하지 않습니다. Jev 기술 오류 시 Auto는 Sol 6.1/high, 일반 모드는 Sol 6.1/선택 effort를
+사용합니다. 같은 effort를 지원하는 quota fallback이 없으면 명확한 오류를 반환합니다.
+두 경로 모두 Plan 품질·검토 지침을 유지하며 Ultra는 제외합니다. Native Desktop 메뉴의
+실제 표시는 미검증이고, 일반 Desktop은 기본 공급자와 catalog를 유지합니다.
+[릴리즈 검증 기록](docs/release/selection-modes.md)을 참고하세요.
+
 ## 이렇게 보입니다
 
 아래는 응답 형식을 설명하는 예제이며, **실제 실행 기록이나 특정 모델 선택을 보장하는 결과가 아닙니다.** 문맥과 도구 결과에 따라 선택이 달라집니다. 본문은 Codex가 작성하며, Jev는 모델과 effort를 정합니다. 판단 이유 전체가 자동으로 표시되지는 않습니다.
@@ -161,8 +183,6 @@ bin/jev-codex-router smoke
 현재 정책은 위 리뷰·아키텍처 범주에 Astra를 사용하고, effort는 별도로 판단합니다. 문제가 없는 연속 작업에서는 판단을 제한적으로 재사용합니다. 새 사용자 요청, 오류, 문맥 압축, 도구 체인 변경이 있으면 다시 판단합니다.
 
 **Jev에 기술적인 오류가 생기거나 키·작업 정보가 없으면** **GPT-6.1 Sol / high / Standard**로 실행을 이어갑니다. Sol/high 라벨만으로 정상 선택과 오류 시 대체 실행을 구분할 수는 없으며, 로컬 진단에서 확인할 수 있습니다. Kill switch, shadow mode, 모델 사용량 소진에는 [별도 처리](server/INSTALL.md)가 적용됩니다.
-
-네이티브 Plan 모드에서는 구현 가능한 계획의 품질을 우선하고, 불확실성·의존성·실패 영향·후속 수정 비용에 따라 Jev가 모델과 추론 effort를 선택합니다. 중요한 계획에는 독립 검토를, 필요한 경우 허용된 에이전트 협력을 권고합니다. 검토 안내는 위임 권한이나 검토 완료 증거를 만들지 않으며 Ultra를 자동으로 선택하지 않습니다. 승인된 계획의 단순 문구 수정은 가벼운 경로를 사용할 수 있습니다. [Plan 정책과 검증 기록](docs/release/adaptive-planning.md)을 참고하세요.
 
 **Ultra는 사용자가 직접 선택합니다.** 독립적인 작업을 병렬로 나누면 도움이 될 때 라우터가 일반 Sol 또는 Astra 모델의 Ultra를 선택하도록 권할 수 있습니다. 현재 권고 문구는 한국어입니다. 권고만으로 모드가 바뀌거나 위임이 켜지지는 않으며, 클라이언트 지원과 위임 권한이 필요합니다. Ultra는 토큰을 더 사용할 수 있습니다.
 

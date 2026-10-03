@@ -1,10 +1,24 @@
 # Operations runbook
 
 `jev_server.py` listens on `127.0.0.1:4319` and receives Responses requests for
-the `jev/auto` model from the router fork embedded at `../router`. For each turn it asks Jev for a route
+the `jev/auto` and `jev/manual` models from the router fork embedded at `../router`. For each turn it asks Jev for a route
 (tier + thinking depth), applies the routing policy, and relays the request to
 the Codex Router's local caller edge, which serves native GPT models from the
 shared ChatGPT session.
+
+## Selection modes
+
+`codex -p jev` uses Auto. For Manual, use
+`codex -p jev -m jev/manual -c model_reasoning_effort=high`.
+Auto advertises one Auto selection sentinel, which never reaches execution.
+Manual accepts low/medium/high/xhigh/max and preserves exact effort across
+cache, retries, Plan advice and fallback. Invalid values fail before inference;
+missing effort defaults to medium. Ultra and native Desktop menu acceptance
+remain outside verified support.
+
+The optional [native Desktop candidate](../docs/release/native-desktop-bridge.md)
+uses standard effort enums for both entries without patching frontend assets.
+Auto ignores this client selection. Its UI gate remains pending.
 
 ## Local authentication
 
@@ -37,7 +51,8 @@ environment.
 | Watchdog (no launchd) | `server/watchdog.sh`, e.g. cron every 5 min |
 | Router status | `bin/jev-codex-router router status` |
 | Update the monorepo | `bin/jev-codex-router update` |
-| Hide the model | `router/bin/control picker set jev/auto hide` |
+| Hide the model | `router/bin/control picker set jev/auto hide
+router/bin/control picker set jev/manual hide` |
 | Disable the provider | `bin/jev-codex-router router providers generic disable jev` |
 | Revoke native sharing | `bin/jev-codex-router router chatgpt-session disable` |
 
@@ -49,7 +64,7 @@ embedded router from a second checkout. Provider and model state live outside
 the source tree, so updates should not touch them. Verify anyway:
 
 1. `bin/jev-codex-router router providers generic list` → should show `SHOW jev`.
-2. `cat ~/.codex/codex-router/model-picker.json` → `jev/auto` under `visible`.
+2. `cat ~/.codex/codex-router/model-picker.json` → `jev/auto` and `jev/manual` under `visible`.
 3. `curl -s http://127.0.0.1:4319/health` → `{"ok": true...}`.
 4. If needed: `bin/jev-codex-router router refresh-catalog`, then start `codex -p jev`.
 
@@ -120,6 +135,7 @@ To stop using Jev while keeping the shared router and other providers:
 ```sh
 bin/jev-codex-router router providers generic disable jev
 router/bin/control picker set jev/auto hide
+router/bin/control picker set jev/manual hide
 launchctl bootout "gui/$(id -u)/com.thibaultsaintjean.jev-router"
 ```
 

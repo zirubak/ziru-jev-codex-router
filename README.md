@@ -19,13 +19,17 @@ The aim is to use enough reasoning to do the job well, while avoiding unnecessar
 3. Send your usual prompts. With route display enabled, replies include `[gpt-6.1-sol / high]`.
 
 Normal Codex and the Desktop model picker keep their official OpenAI/ChatGPT
-provider and catalog. Jev is available only through an explicitly selected
+provider and catalog. The standard installation exposes Jev through an explicitly selected
 profile; the installer does not override `openai_base_url` or the global
 model catalog. Existing threads retain their provider/model identity. Start a
 fresh official-model thread for normal use.
 
 See [provider isolation](docs/release/provider-isolation.md) for configuration,
 recovery and verification details.
+
+An optional, build-specific [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
+keeps the existing effort menu and separates Auto/Manual by name. Signed-in
+native picker acceptance is still pending; ordinary installation does not enable it.
 
 ## Install
 
@@ -114,6 +118,25 @@ bin/jev-codex-router smoke
 Run `codex -p jev` to select **Jev Codex Router** explicitly. To prepare dependencies without activating services, use `./install.sh --prepare-only`. See the [operations guide](server/INSTALL.md) for installation details and recovery.
 
 </details>
+
+## Selection modes
+
+The explicit Jev profile contains two routes. `codex -p jev` selects Auto;
+`codex -p jev -m jev/manual -c model_reasoning_effort=high` selects Manual at High.
+
+| Route | Advertised effort | Responsibility |
+| --- | --- | --- |
+| Jev Codex Router by Auto (`jev/auto`) | Auto only | Jev chooses the model and effort |
+| Jev Codex Router (`jev/manual`) | low (Light), medium, high, xhigh, max | Jev chooses the model; code keeps your effort |
+
+Manual defaults to medium when effort is absent. Invalid effort fails before
+inference; cache changes, retries and fallback preserve the exact choice. Auto
+never forwards its selection sentinel to the executing model. Technical Jev
+failure uses Sol 6.1/high in Auto and Sol 6.1/selected effort in Manual. If no
+quota fallback supports the selected effort, Manual returns an explicit error.
+Both routes retain Plan quality and review guidance. Ultra remains excluded.
+Native Desktop menu rendering has not been verified; ordinary Desktop remains
+on its built-in provider and catalog. See [release evidence](docs/release/selection-modes.md).
 
 ## What you'll see
 
@@ -224,6 +247,8 @@ Start with `bin/jev-codex-router router doctor` if the model is missing or reque
 | [Support](docs/SUPPORT.md) | Supported environment and validation limits |
 | [Costs](docs/COSTS.md) | What was measured and what remains unknown |
 | [Contributing](CONTRIBUTING.md) | Tests and contributions |
+| [System/integration/release tests](docs/release/system-integration-release-tests.md) | Stable acceptance cases and evidence requirements |
+| [Release test record](docs/release/release-test-record-template.md) | Reusable candidate, result and request-correlation template |
 | [Releases](docs/RELEASING.md) | Release checks; Star History setup deferred until public release |
 
 **Windows is unverified.** The maintainer has not tested Windows installation or end-to-end use. The root installer uses macOS launchd; portable `router/` CI does not establish Windows product support. Windows testers are welcome to try that component in an isolated environment and [share feedback](https://github.com/zirubak/ziru-jev-codex-router/issues). Include OS, Node.js and Codex versions, commit, reproduction steps and sanitized errors. Leave out keys, authentication files, raw conversations and backups.

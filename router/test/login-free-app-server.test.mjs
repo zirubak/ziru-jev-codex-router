@@ -17,6 +17,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { codexCandidatePaths, findCodexBinary } from "../src/codex-binary.mjs";
+import { contractBinaryPaths } from "./codex-contract-binary.mjs";
 import { handleResponsesWebSocketUpgrade } from "../src/responses-websocket.mjs";
 import { spawnableCommand } from "../src/spawnable-command.mjs";
 
@@ -398,12 +399,16 @@ async function verifySignedOutTurn(binary, { initialProvider = "openai" } = {}) 
 }
 
 test("real Codex app-server completes signed-out turns through fallback and preserved providers", async (t) => {
-  // An explicit contract binary must not be expanded into every historical
-  // installation on the host. Missing explicit inputs are errors, not skips.
   const explicitBinary = process.env.CODEX_BIN;
   if (explicitBinary) assert.ok(existsSync(explicitBinary), "CODEX_BIN must name an installed contract binary");
+  const expectedVersion = process.env.CODEX_ROUTER_EXPECT_CODEX_VERSION;
+  const selectedPaths = contractBinaryPaths({
+    explicit: process.env.CODEX_BIN,
+    expectedVersion,
+    discovered: [findCodexBinary(), ...codexCandidatePaths()],
+  });
   const candidates = [...new Set(
-    (explicitBinary ? [explicitBinary] : [findCodexBinary(), ...codexCandidatePaths()])
+    selectedPaths
       .filter((candidate) => candidate && existsSync(candidate))
       .map((candidate) => realpathSync(candidate)),
   )];
@@ -418,13 +423,12 @@ test("real Codex app-server completes signed-out turns through fallback and pres
     }
   });
   if (binaries.length === 0) {
-    if (process.env.CODEX_ROUTER_REQUIRE_REAL_CODEX === "1") {
+    if (expectedVersion || process.env.CODEX_ROUTER_REQUIRE_REAL_CODEX === "1") {
       assert.fail("CODEX_ROUTER_REQUIRE_REAL_CODEX=1 but no runnable Codex binary was found");
     }
     t.skip("a real Codex binary is not installed");
     return;
   }
-  const expectedVersion = process.env.CODEX_ROUTER_EXPECT_CODEX_VERSION;
   for (const { binary, version } of binaries) {
     if (expectedVersion) {
       assert.equal(version, expectedVersion, `unexpected Codex contract version at ${binary}`);

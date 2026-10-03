@@ -44,17 +44,27 @@ class InstallTransactionTests(unittest.TestCase):
         self.env = {**os.environ, "HOME": str(self.home),
                     "CODEX_HOME": str(self.codex_home),
                     "CODEX_ROUTER_STATE_DIR": str(self.state),
+                    "MODEL_ROUTER_STATE_DIR": str(self.state),
+                    "MODEL_ROUTER_USER_MODELS": str(self.state / "user-models.json"),
+                    "MODEL_ROUTER_MODEL_PICKER_STATE": str(self.state / "model-picker.json"),
+                    "FIXTURE_SOURCE": str(ROOT),
                     "PATH": str(self.commands) + os.pathsep + os.environ["PATH"],
                     "FIXTURE_CALLS": str(self.base / "calls"),
                     "FIXTURE_NODE": shutil.which("node"),
                     "FIXTURE_MANAGER": str(ROOT / "router/src/config-manager.mjs")}
         self._script(self.commands / "node", '''#!/usr/bin/env python3
-import json,os,pathlib,sys
+import json,os,pathlib,sys,subprocess
 state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
 with open(os.environ['FIXTURE_CALLS'],'a') as log:log.write('node '+ ' '.join(sys.argv[1:])+'\\n')
+if 'configure-model.mjs' in sys.argv[1]:
+ os.execv(os.environ['FIXTURE_NODE'],[os.environ['FIXTURE_NODE'],os.environ['FIXTURE_SOURCE']+'/server/configure-model.mjs'])
 if 'discovery-mode.mjs' in sys.argv[1]:
  (state/'discovery-mode.json').write_text(json.dumps({'version':1,'discovery':'enabled'}))
 if 'catalog.mjs' in sys.argv[1]:
+ if os.environ.get('FIXTURE_CHECK_OWNER'):
+  source=(pathlib.Path(os.environ['FIXTURE_SOURCE'])/'router/src/state-owner.mjs').as_uri()
+  code="import {assertStateOwnership} from '"+source+"';assertStateOwnership('publish native catalog')"
+  subprocess.run([os.environ['FIXTURE_NODE'],'--input-type=module','-e',code],check=True)
  (state/'merged-models.json').write_text(json.dumps({'models':[] if os.environ.get('FIXTURE_EMPTY') else [{'slug':'test/native'}]}))
 ''')
         self._script(self.repo / "router/bin/codex-router", '''#!/usr/bin/env python3
@@ -75,14 +85,62 @@ disabled='--no-discovery' in sys.argv
 (state/'discovery-mode.json').write_text(json.dumps({'version':1,'discovery':'disabled' if disabled else 'enabled'}))
 (state/'merged-models.json').write_text(json.dumps({'models':[] if disabled else [{'slug':'test/native'}]}))
 (state/'caller-secret').write_text('synthetic-installer-caller-key-long-enough\\n')
+(state/'loaded-routes.json').write_text(json.dumps(['jev/auto']))
 subprocess.run([os.environ['FIXTURE_NODE'],os.environ['FIXTURE_MANAGER'],'enable'],check=True)
 '''
         self._script(self.repo / "router/install.sh", installer)
         self._script(self.repo / "router/bin/install", installer)
-        self._script(self.repo / "router/bin/control", "#!/bin/sh\nexit 0\n")
+        self._script(self.repo / "router/bin/control", '''#!/usr/bin/env python3
+import os,pathlib,sys
+if sys.argv[1:3]==['picker','set']:
+ source=(pathlib.Path(os.environ['FIXTURE_SOURCE'])/'router/src/model-picker-state.mjs').as_uri()
+ code="import {setModelVisible} from '"+source+"';setModelVisible(process.argv[1],true)"
+ os.execv(os.environ['FIXTURE_NODE'],[os.environ['FIXTURE_NODE'],'--input-type=module','-e',code,sys.argv[3]])
+if sys.argv[1:3]==['service','restart']:
+ source=(pathlib.Path(os.environ['FIXTURE_SOURCE'])/'router/src/user-models.mjs').as_uri()
+ code="import {readUserModels} from '"+source+"';import {writeFileSync} from 'node:fs';writeFileSync(process.env.CODEX_ROUTER_STATE_DIR+'/loaded-routes.json',JSON.stringify(readUserModels().map(r=>r.slug)))"
+ os.execv(os.environ['FIXTURE_NODE'],[os.environ['FIXTURE_NODE'],'--input-type=module','-e',code])
+''')
         self._script(self.repo / "server/install-service.sh", "#!/bin/sh\nexit 0\n")
         (self.repo / "server/smoke.py").write_text(
             'import os,sys\nsys.exit(7 if os.environ.get("FIXTURE_FAIL_SMOKE") else 0)\n')
+
+    def test_begin_rejects_route_state_overlap_before_snapshot(self):
+        routes = self.codex_home / "jev-desktop-thread-routes"
+        routes.mkdir(mode=0o700)
+        for state in (routes, routes / "child"):
+            with self.subTest(state=state), mock.patch.dict(os.environ, {
+                **self.env, "MODEL_ROUTER_STATE_DIR": str(state),
+            }):
+                with self.assertRaisesRegex(ValueError, "Desktop route state"):
+                    transaction.begin()
+            self.assertFalse((self.codex_home / "jev-install-backups").exists())
+        alias = self.base / "route-alias"
+        alias.symlink_to(routes, target_is_directory=True)
+        with mock.patch.dict(os.environ, {**self.env, "MODEL_ROUTER_STATE_DIR": str(alias / "child")}):
+            with self.assertRaisesRegex(ValueError, "Desktop route state"):
+                transaction.begin()
+        self.assertFalse((self.codex_home / "jev-install-backups").exists())
+
+    def test_rollback_preserves_external_desktop_route_writer_state(self):
+        routes = self.codex_home / "jev-desktop-thread-routes"
+        routes.mkdir(mode=0o700)
+        record = routes / "fixture.json"
+        record.write_text('{"revision":1}')
+        record.chmod(0o600)
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(transaction.sys, "platform", "linux"):
+            backup = transaction.begin()
+            record.write_text('{"revision":2}')
+            lock = routes / "fixture.json.lock"
+            lock.write_text("active writer")
+            lock.chmod(0o600)
+            transaction.restore(backup)
+        self.assertEqual(record.read_text(), '{"revision":2}')
+        self.assertEqual(lock.read_text(), "active writer")
+        self.assertEqual(record.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(routes.stat().st_mode & 0o777, 0o700)
+        self.assertFalse((backup / "state/desktop/thread-routes").exists())
 
     @staticmethod
     def _script(path: Path, text: str):
@@ -93,6 +151,21 @@ subprocess.run([os.environ['FIXTURE_NODE'],os.environ['FIXTURE_MANAGER'],'enable
         return subprocess.run(["sh", str(self.repo / "install.sh")],
                               env={**self.env, **flags}, capture_output=True,
                               text=True, timeout=20)
+
+    def test_desktop_opt_in_failure_restores_original_state(self) -> None:
+        desktop = self.state / "desktop"
+        desktop.mkdir()
+        (desktop / "manifest.json").write_text("original launcher state")
+        (self.repo / "server/install_desktop.py").write_text(
+            "import os,pathlib,sys\n"
+            "root=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])/'desktop'\n"
+            "(root/'manifest.json').write_text('failed candidate')\n"
+            "sys.exit(9)\n")
+        result = subprocess.run(["sh", str(self.repo / "install.sh"), "--desktop"],
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertEqual((desktop / "manifest.json").read_text(), "original launcher state")
 
     def test_fresh_install_enables_required_discovery_and_completes(self):
         result = self.run_install()
@@ -145,6 +218,47 @@ subprocess.run([os.environ['FIXTURE_NODE'],os.environ['FIXTURE_MANAGER'],'enable
         calls = (self.base / "calls").read_text()
         self.assertIn("install --take-over-managed-router", calls)
         self.assertEqual(json.loads((self.state / "discovery-mode.json").read_text())["discovery"], "enabled")
+
+    def test_full_reinstall_authorizes_ownership_before_catalog_publication(self):
+        (self.state / "install-manifest.json").write_text(json.dumps({
+            "version": 1, "current": {"sourceRoot": str(self.base / "previous/router")},
+        }))
+        result = self.run_install(FIXTURE_CHECK_OWNER="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.config.read_bytes(), self.original)
+
+    def test_full_install_reloads_router_after_publishing_both_routes(self):
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        loaded = json.loads((self.state / "loaded-routes.json").read_text())
+        self.assertEqual(loaded, ["jev/auto", "jev/manual"])
+
+    def test_two_mode_reinstall_preserves_other_models_and_picker_entries(self):
+        original = {"version": 1, "models": [{"slug": "fixture/other", "provider": "fixture"}]}
+        (self.state / "user-models.json").write_text(json.dumps(original))
+        (self.state / "model-picker.json").write_text(json.dumps({
+            "version": 1, "visible": ["fixture/other"], "hidden": [],
+        }))
+        for _ in range(2):
+            result = self.run_install()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = json.loads((self.state / "user-models.json").read_text())["models"]
+        self.assertEqual([row["slug"] for row in rows],
+                         ["fixture/other", "jev/auto", "jev/manual"])
+        visible = json.loads((self.state / "model-picker.json").read_text())["visible"]
+        self.assertEqual(set(visible), {"fixture/other", "jev/auto", "jev/manual"})
+
+    def test_late_failure_restores_two_mode_catalog_and_picker_snapshot(self):
+        saved = {
+            "user-models.json": '{"version":1,"models":[{"slug":"fixture/other","provider":"fixture"}]}',
+            "model-picker.json": '{"version":1,"visible":["fixture/other"],"hidden":["jev/auto"]}',
+        }
+        for name, text in saved.items():
+            (self.state / name).write_text(text)
+        result = self.run_install(FIXTURE_FAIL_SMOKE="1")
+        self.assertNotEqual(result.returncode, 0)
+        for name, text in saved.items():
+            self.assertEqual((self.state / name).read_text(), text)
 
     def test_rollback_preserves_owner_execute_permission(self):
         shim = self.state / "bin/codex"

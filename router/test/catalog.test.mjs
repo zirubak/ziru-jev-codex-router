@@ -920,6 +920,30 @@ test("models stay untouched when the installed build understands their efforts",
   assert.equal(unchanged, original);
 });
 
+test("Jev Auto singleton and Manual ladder reach the native catalog unchanged", () => {
+  const auto = {
+    ...grok, slug: "jev/auto", displayName: "Jev Codex Router by Auto",
+    defaultEffort: "auto", reasoningLevels: [{ effort: "auto", description: "Auto" }],
+  };
+  const manual = {
+    ...grok, slug: "jev/manual", displayName: "Jev Codex Router",
+    defaultEffort: "medium", reasoningLevels: [
+      { effort: "low", description: "Light" },
+      { effort: "medium", description: "Balanced" },
+      { effort: "high", description: "Deep" },
+      { effort: "xhigh", description: "Extended" },
+      { effort: "max", description: "Maximum" },
+    ],
+  };
+  const mapped = clampModelEfforts([auto, manual], codexEffortVocabulary("codex-cli 0.159.2"))
+    .map((model) => routedModel(template, model));
+  assert.equal(mapped[0].default_reasoning_level, "auto");
+  assert.deepEqual(mapped[0].supported_reasoning_levels, [{ effort: "auto", description: "Auto" }]);
+  assert.equal(mapped[1].default_reasoning_level, "medium");
+  assert.deepEqual(mapped[1].supported_reasoning_levels.map((level) => level.effort),
+    ["low", "medium", "high", "xhigh", "max"]);
+});
+
 test("native cache permits in-place refresh only when it contains native models", () => {
   assert.equal(
     nativeCacheCanRefreshInPlace({ catalog: { models: [template] } }),

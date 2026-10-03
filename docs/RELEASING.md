@@ -6,10 +6,10 @@ changelog and upstream release artifacts are not releases of this project.
 ## Before publishing
 
 - Identify the exact source commit and scoped fixes; link their issues.
-- Require the local Python tests, compilation, offline routing dossier, and
-  embedded router syntax/test suite listed in [AGENTS.md](../AGENTS.md).
-  Record conditional skips and investigate failures. Repository Actions are
-  disabled by owner instruction; remote CI is not a merge gate.
+- Require the local checks and integrated reviews in [AGENTS.md](../AGENTS.md)
+  on the candidate. The owner disabled repository Actions on 2026-10-02;
+  remote CI is not a merge gate. Record skips and unresolved platform limits.
+  Keep workflow definitions for a future explicitly authorized reactivation.
 - Review dependency/lockfile changes, licenses and audit output.
 - Review context preservation, retry boundaries, privacy, and migration impact
   for any affected component.
@@ -27,7 +27,7 @@ changelog and upstream release artifacts are not releases of this project.
 ## After publishing
 
 - Verify the published tag/artifact resolves to the intended source.
-- Link the tested commit and local verification record when closing issues.
+- Link the tested commit and local verification evidence when closing issues.
 - For a deployment, read back running policy/health separately from Git status.
 - Roll back with a reviewed revert or known source version, preserving user
   state. Never rewrite shared history or delete credentials as a rollback.
@@ -41,7 +41,7 @@ Branch protections and rulesets are repository settings, not implied by this
 document. Agree stable check names and merge policy before enforcing them;
 read back the actual GitHub settings before claiming protection. Do not make a
 new or failing platform check a required merge gate without qualification.
-The preserved workflow job names are `Jev server (ubuntu-latest, Python 3.11)`,
+The retained workflow job names include `Jev server (ubuntu-latest, Python 3.11)`,
 `Jev server (macos-latest, Python 3.12)`, `Embedded router (ubuntu-latest)`,
 `Embedded router (macos-latest)` and
 `Codex app-server contract (0.155.0-alpha.9.2)`. Exclude
@@ -53,17 +53,14 @@ On 2026-10-02, the protection and ruleset API reads returned HTTP 403 with
 No branch protection or ruleset update is claimed. The workflow split and
 documented owner merge policy apply independently of those unavailable settings.
 
-## Historical Actions usage controls (2026-10-02)
-
-The owner subsequently disabled repository Actions. Local checks and integrated
-review now gate merges; do not re-enable Actions without explicit authorization.
-The controls and billing observations below describe the earlier policy.
+## Actions usage controls (2026-10-02)
 
 - Windows portability feedback is manual-only; keep its full assertions and
   visible failure results without launching it on every PR or `main` push.
 - Both workflows cancel superseded runs for the same PR/ref.
-- Keep the five product jobs and their test commands; do not bypass required
-  checks to compensate for an account billing restriction.
+- Repository Actions are disabled by owner authorization. Keep their job
+  definitions and all local assertions; do not report unstarted CI as passing
+  or re-enable Actions without an explicit owner request.
 - CI run `37048612646` and advisory run `37048612592` did not start tests.
   GitHub reported: `The job was not started because recent account payments
   have failed or your spending limit needs to be increased. Please check the
