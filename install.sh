@@ -30,7 +30,7 @@ Install Jev Codex Router from the embedded router fork.
 
   --prepare-only  Install the embedded router's dependencies without changing
                   Codex configuration, services, credentials, or local state.
-  --desktop       Also prepare the optional Desktop launcher; never start the app.
+  --desktop       Register the persistent Desktop bridge; never start the app.
   -h, --help      Show this help.
 
 The full install preserves any configured router providers, adds or updates the
@@ -50,6 +50,8 @@ case ${1:-} in
   *) usage >&2; exit 2 ;;
 esac
 [ "$#" -le 1 ] || { usage >&2; exit 2; }
+JEV_INSTALL_DESKTOP=$desktop
+export JEV_INSTALL_DESKTOP
 
 [ -x "$router_cli" ] || {
   echo "Embedded router is missing at $router_cli." >&2
@@ -78,6 +80,12 @@ if [ "$mode" = prepare ]; then
     CODEX_ROUTER_STATE_DIR=$prepare_home/codex-router \
     "$router_dir/bin/install" --prepare-only
   exit 0
+fi
+
+# Reject unsupported Desktop before dependency preparation or private-state writes.
+# The launcher installation rechecks inside the transaction in case the app updates.
+if [ "$desktop" = 1 ]; then
+  python3 "$repo_dir/server/install_desktop.py" --check
 fi
 
 # Dependency preparation uses a separate home and never activates client routing.

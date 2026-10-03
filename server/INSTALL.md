@@ -70,6 +70,15 @@ the source tree, so updates should not touch them. Verify anyway:
 
 ## Troubleshooting
 
+- **Desktop compatibility or recovery error**: `--desktop` tests the signed app
+  and real bundled engine before installation side effects. Changed app artifacts
+  are automatically requalified at bridge startup; no manual hash allowlist is
+  required. A failed contract leaves saved Jev chats readable and rejects Jev
+  inference with `jev_desktop_recovery_required`. Run the root
+  `./install.sh --desktop` transaction, then quit and reopen Desktop yourself
+  using the generated launcher. A foreign `CODEX_CLI_PATH` is preserved and
+  reported as a conflict. See [update qualification and recovery](../docs/release/native-desktop-bridge.md#compatibility-and-app-updates).
+
 - **`invalid_responses_response` in router logs / “unavailable right now” in
   Codex**: the API forwarder parsed our reply as JSON instead of SSE. The server
   forces `Content-Type: text/event-stream` on streamed replies for exactly this
@@ -132,6 +141,15 @@ without that support need a compatible client before Jev can be used.
 
 To stop using Jev while keeping the shared router and other providers:
 
+If Desktop integration was installed, first remove its owned GUI override and
+login registration. Use the installer-reported manifest path if it differs:
+
+```sh
+python3 server/desktop_session.py deactivate "$HOME/.codex/codex-router/desktop/manifest.json"
+```
+
+Then stop the Jev routes and service:
+
 ```sh
 bin/jev-codex-router router providers generic disable jev
 router/bin/control picker set jev/auto hide
@@ -149,10 +167,18 @@ rm "$HOME/Library/LaunchAgents/com.thibaultsaintjean.jev-router.plist"
 
 For complete removal of this installation's Codex integration:
 
+For a Desktop installation, run the `desktop_session.py deactivate` command
+above before uninstalling or removing its source checkout. Quit and reopen
+Desktop yourself when ready; the running app retains its existing child process.
+
 ```sh
 bin/jev-codex-router router chatgpt-session disable
 bin/jev-codex-router router uninstall
 ```
+
+Named Desktop recovery providers and saved chat history are retained. Those
+definitions keep old chats loadable; they do not select Jev as a default. They
+cannot run Jev requests after its service is removed.
 
 Revoking sharing also affects any other local clients using the shared ChatGPT
 session; omit that step if they still need it. The embedded uninstall preserves

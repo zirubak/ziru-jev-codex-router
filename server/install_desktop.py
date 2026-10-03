@@ -1,36 +1,48 @@
 """Install an opt-in launcher inside the root transaction's private state tree."""
-import hashlib
 import json
 import os
 from pathlib import Path
 import shlex
+import shutil
+import re
+import sys
 import stat
 import subprocess
 import tempfile
 import tomllib
 
-
-SUPPORTED_HASHES = {
-    "expectedAppSha256": "c662897ab25e819cd97a7981cf34d10eefcb9243095d527d27adff71bc18af0a",
-    "expectedNativeSha256": "1180e2d56ea06ec583092acd933345685da3441cb1769a436d76dbf320613e75",
-}
+import desktop_provider_registry
+import desktop_session
 
 
-def verify_app(app: Path) -> dict[str, str]:
-    """Pin the actual protocol and picker build, not a marketing version."""
-    artifacts = {
-        "expectedAppSha256": app / "Contents/Resources/app.asar",
-        "expectedNativeSha256": app / "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
-    }
-    hashes = {}
-    for key, file in artifacts.items():
-        with file.open("rb") as artifact:
-            hashes[key] = hashlib.file_digest(artifact, "sha256").hexdigest()
-    if hashes != SUPPORTED_HASHES:
-        raise ValueError("Unverified Desktop build; keep ordinary Codex until compatibility is tested")
-    subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)],
-                   check=True, capture_output=True, timeout=60)
-    return hashes
+def verify_app(app: Path) -> dict[str, object]:
+    """Qualify each signed build against the isolated native bridge contract."""
+    node = shutil.which("node")
+    if not node or not Path(node).is_absolute():
+        raise ValueError("An absolute Node.js runtime is required for Desktop compatibility")
+    probe = Path(__file__).resolve().parent.parent / "router/src/desktop-compatibility.mjs"
+    try:
+        result = subprocess.run([node, str(probe), "--app", str(app.resolve())],
+                                capture_output=True, text=True, timeout=90)
+    except subprocess.SubprocessError as error:
+        raise ValueError("Desktop compatibility probe did not complete") from error
+    if result.returncode:
+        raise ValueError("Desktop compatibility validation failed; installation state was preserved")
+    try:
+        qualified = json.loads(result.stdout)
+        keys = ("expectedAppSha256", "expectedNativeSha256", "contractDigest")
+        if not isinstance(qualified, dict) or any(
+                not isinstance(qualified.get(key), str)
+                or not re.fullmatch(r"[a-f0-9]{64}", qualified[key]) for key in keys):
+            raise ValueError("invalid compatibility fingerprints")
+        if (type(qualified.get("contractVersion")) is not int or qualified["contractVersion"] != 1
+                or not isinstance(qualified.get("nativeVersion"), str)
+                or not qualified["nativeVersion"].strip()
+                or len(qualified["nativeVersion"]) > 256):
+            raise ValueError("invalid compatibility contract")
+    except (ValueError, TypeError) as error:
+        raise ValueError("Desktop compatibility probe returned an invalid result") from error
+    return {key: qualified[key] for key in (*keys, "contractVersion", "nativeVersion")}
 
 
 def private_write(destination: Path, content: bytes, mode: int) -> None:
@@ -38,8 +50,8 @@ def private_write(destination: Path, content: bytes, mode: int) -> None:
         raise ValueError("refusing linked Desktop destination")
     if destination.exists():
         info = destination.stat()
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
-            raise ValueError("Desktop destination must be an owned regular file")
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise ValueError("Desktop destination must be an owner-only regular file")
     fd, name = tempfile.mkstemp(prefix=".desktop-", dir=destination.parent)
     temporary = Path(name)
     try:
@@ -53,6 +65,7 @@ def private_write(destination: Path, content: bytes, mode: int) -> None:
 
 def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Path:
     hashes = verify_app(app)
+    codex, state, app, source, node = (path.absolute() for path in (codex, state, app, source, node))
     # Native threads and their route records must advance together. Keep route
     # records outside the install transaction's snapshotted/restored state.
     route_state = codex.resolve() / "jev-desktop-thread-routes"
@@ -67,6 +80,7 @@ def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Pa
         raise ValueError("An isolated loopback Jev provider is required")
     if provider.get("requires_openai_auth") is not False:
         raise ValueError("Jev must not use the built-in OpenAI authentication path")
+    desktop_provider_registry.validate_provider(provider)
     destination = state / "desktop"
     if destination.is_symlink() or state.is_symlink():
         raise ValueError("refusing linked Desktop state")
@@ -76,7 +90,10 @@ def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Pa
     destination.chmod(0o700)
     manifest_path = destination / "manifest.json"
     manifest = {
-        "version": 1, "provider": provider,
+        "version": 1, "provider": provider, "codexHome": str(codex.resolve()),
+        "bridgeLauncher": str(destination / "jev-codex"),
+        "session": {"label": desktop_session.LABEL, "python": str(Path(sys.executable).resolve()),
+                    "script": str(source / "server/desktop_session.py")},
         "routeStateDirectory": str(route_state),
         "nativeBinary": str(app / "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
         "appExecutable": str(app / "Contents/MacOS/ChatGPT"),
@@ -85,15 +102,29 @@ def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Pa
         **hashes,
     }
     private_write(manifest_path, (json.dumps(manifest, indent=2) + "\n").encode(), 0o600)
+    wrapper = "#!/bin/sh\nJEV_DESKTOP_CONFIG=" + shlex.quote(str(manifest_path))
+    wrapper += "\nexport JEV_DESKTOP_CONFIG\nexec " + " ".join(shlex.quote(str(value)) for value in (
+        node, source / "router/bin/jev-desktop-codex")) + ' "$@"\n'
+    private_write(destination / "jev-codex", wrapper.encode(), 0o700)
+    desktop_provider_registry.install(codex / "config.toml", provider)
     command = "#!/bin/sh\nexec " + " ".join(shlex.quote(str(value)) for value in (
         node, source / "router/src/desktop-launch.mjs", manifest_path)) + "\n"
     launcher = destination / "Jev Codex.command"
     private_write(launcher, command.encode(), 0o700)
+    desktop_session.install(manifest_path)
     return launcher
 
 
 def main() -> None:
-    import shutil
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true",
+                        help="verify Desktop compatibility without changing installation state")
+    args = parser.parse_args()
+    if args.check:
+        verify_app(Path("/Applications/ChatGPT.app"))
+        print("Desktop compatibility verified; no installation state changed.")
+        return
     from install_transaction import runtime_paths
     _, codex, state = runtime_paths()
     source = Path(__file__).resolve().parent.parent
@@ -101,7 +132,7 @@ def main() -> None:
     if not node:
         raise ValueError("Node.js is required")
     launcher = install(codex, state, Path("/Applications/ChatGPT.app"), source, Path(node))
-    print(f"Desktop launcher prepared, not started: {launcher}")
+    print(f"Desktop integration registered; quit and reopen the app to activate: {launcher}")
 
 
 if __name__ == "__main__":

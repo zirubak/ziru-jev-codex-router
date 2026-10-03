@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -11,6 +11,11 @@ import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
 
 const binary = process.env.JEV_DESKTOP_NATIVE_BINARY;
 const catalog = process.env.JEV_DESKTOP_NATIVE_CATALOG;
+const nativeVersion = binary && catalog ? execFileSync(binary, ['--version'], { encoding: 'utf8' }).trim() : null;
+const windowsByVersion = {
+  'codex-cli 0.159.0-alpha.12.1': { unknown: 258400, carrier: 828400 },
+  'codex-cli 0.160.0': { unknown: 245480, carrier: 828400 },
+};
 
 function respond(res, model, number, compaction) {
   const output = [{ id: `msg_${number}`, type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'FIXTURE_OK', annotations: [] }] }];
@@ -132,6 +137,8 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
   skip: !binary || !catalog, timeout: 90000,
 }, async (t) => {
   const context = await fixture(t);
+  const windows = windowsByVersion[nativeVersion];
+  assert.ok(windows, `Unqualified native version: ${nativeVersion}`);
   let connection = await connect(context);
   try {
     const legacy = await connection.request('thread/start', {
@@ -141,7 +148,7 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
     await connection.turn(connection.request, { threadId: legacy.thread.id, effort: 'low' });
     await connection.turn(connection.request, { threadId: legacy.thread.id, effort: 'medium' });
     assert.ok(connection.notices.some((item) => item.compaction));
-    assert.ok(connection.notices.some((item) => item.window === 258400));
+    assert.ok(connection.notices.some((item) => item.window === windows.unknown), JSON.stringify(connection.notices));
     context.calls.length = 0;
     connection.notices.length = 0;
     let started = await connection.bridge.handle('thread/start', { model: 'jev/manual', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never', config: { model_reasoning_effort: 'medium' } });
@@ -161,7 +168,7 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
       { model: 'gpt-6.1-sol', mode: 'auto', effort: 'high', lite: 'true', additionalTools: true },
     ]);
     assert.equal(connection.notices.some((item) => item.compaction), false);
-    assert.ok(connection.notices.some((item) => item.window === 828400));
+    assert.ok(connection.notices.some((item) => item.window === windows.carrier), JSON.stringify(connection.notices));
     await connection.close();
     connection = await connect(context);
     started = await connection.bridge.handle('thread/resume', { threadId });

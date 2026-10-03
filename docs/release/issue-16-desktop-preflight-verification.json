@@ -1,0 +1,32 @@
+{
+  "issue": 16,
+  "base": "64a9d0b",
+  "scope": "Historical early-rejection candidate 930592b; superseded by issue-18-desktop-update-resilience.json",
+  "hashes": {
+    "install.sh": "7da62aed259656fd2bc972745b9dfcbbf5635dfee49df225bd0156a841df172c",
+    "server/install_desktop.py": "6b9d92acdc619cbe18d42750e5487788256bdbf6635ae89b0d68d9fc2975c535",
+    "server/test_install_desktop.py": "acf01571e1dd989078d249258d1835bf2bb9b7200c97ef4cce918911cb25cace",
+    "server/test_install_transaction.py": "eed4ef301865f618549e60e60e91c9e2f2f6fc2171aee846cd11b33476fe681b",
+    "docs/release/native-desktop-bridge.md": "6942639bdabd47cc41133d4b701d2d6eeaf7df0f4ad71b7b416d2c84e47d6c2a",
+    "server/INSTALL.md": "bf8a5a38bc78a2e95366920d3d5703639e5b0681d74e9664a9bf109a9ecc56c8"
+  },
+  "checks": {
+    "red": "Two focused assertion failures: missing check-only behavior and side effects before Desktop rejection",
+    "python_suite": "263 PASS before final supported-path fixture addition",
+    "final_transaction_suite": "24 PASS on final candidate",
+    "compileall": "PASS",
+    "shell_syntax": "PASS",
+    "offline_dossiers": "16 PASS",
+    "whitespace": "PASS",
+    "local_signed_app_check": "PASS, build 12776 / CLI 0.159.0-alpha.12.1, read-only",
+    "node_suite": "4481 PASS / 37 conditional SKIP / 0 FAIL",
+    "integrated_review": "Code and Python specialists APPROVE including final fixture delta",
+    "node_syntax": "PASS"
+  },
+  "limits": [
+    "Build 12947 unavailable and unverified",
+    "No installation, live Jev request or app restart performed",
+    "Actions disabled, no remote CI claimed"
+  ],
+  "learning": "No durable learning"
+}

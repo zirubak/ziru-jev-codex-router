@@ -7,7 +7,7 @@ const manifest = {
   appAsar: '/app/app.asar', bridgeBinary: '/router/jev-desktop-codex',
   expectedAppSha256: 'a'.repeat(64), expectedNativeSha256: 'b'.repeat(64),
 };
-const observed = { appSha256: 'a'.repeat(64), nativeSha256: 'b'.repeat(64) };
+const observed = { appSha256: 'a'.repeat(64), nativeSha256: 'b'.repeat(64), contractVerified: true };
 const originalEnv = { HOME: '/home', CODEX_HOME: '/home/.codex', PATH: '/bin',
   CODEX_CLI_PATH: '/old', CODEX_APP_SERVER_USE_LOCAL_DAEMON: '1' };
 
@@ -23,18 +23,27 @@ test('compatible app selects launch-scoped bridge without changing normal home',
   assert.deepEqual(result.args, []);
 });
 
-test('app or native binary update disables bridge and preserves ordinary launch', () => {
+test('missing current qualification disables bridge and preserves recovery launch', () => {
   for (const changed of [{ appSha256: 'c'.repeat(64) }, { nativeSha256: 'c'.repeat(64) }]) {
-    const result = planDesktopLaunch(manifest, '/private/manifest.json', originalEnv, { ...observed, ...changed });
+    const result = planDesktopLaunch(manifest, '/private/manifest.json', originalEnv, { ...observed, ...changed, contractVerified: false });
     assert.equal(result.mode, 'native');
     assert.equal(result.env.CODEX_CLI_PATH, undefined);
     assert.equal(result.env.JEV_DESKTOP_CONFIG, undefined);
     assert.equal(result.executable, manifest.appExecutable);
-    assert.match(result.warning, /updated/);
+    assert.match(result.warning, /remain readable/);
   }
 });
 
 test('invalid manifest does not launch any command', () => {
   assert.throws(() => planDesktopLaunch({ ...manifest, version: 2 }, '/p', {}, observed), /manifest/);
   assert.throws(() => planDesktopLaunch({ ...manifest, appExecutable: 'relative' }, '/p', {}, observed), /absolute/);
+});
+
+test('a signed update that passes the current native contract keeps the bridge enabled', () => {
+  const result = planDesktopLaunch(manifest, '/private/manifest.json', originalEnv, {
+    appSha256: 'c'.repeat(64), nativeSha256: 'd'.repeat(64), contractVerified: true,
+  });
+  assert.equal(result.mode, 'jev');
+  assert.equal(result.env.CODEX_CLI_PATH, manifest.bridgeBinary);
+  assert.equal(result.warning, null);
 });

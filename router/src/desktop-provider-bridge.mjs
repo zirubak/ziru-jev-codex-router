@@ -180,7 +180,10 @@ export class DesktopProviderBridge {
     if (effort != null) config.model_reasoning_effort = effort;
     const mode = providerMode(providerId);
     if (mode || providerId === JEV_PROVIDER) {
-      const definition = mode ? { ...this.provider, http_headers: { ...this.provider.http_headers, 'x-jev-selection-mode': mode } } : this.provider;
+      // Native config deep-merges header maps: explicitly override the recovery
+      // marker instead of relying on an omitted key to delete the base value.
+      const definition = mode ? { ...this.provider, http_headers: { ...this.provider.http_headers,
+        'x-jev-selection-mode': mode, 'x-jev-desktop-recovery': 'bridge-active' } } : this.provider;
       config.model_providers = { ...config.model_providers, [providerId]: definition };
     }
     if (mode) {

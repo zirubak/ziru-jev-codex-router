@@ -4170,6 +4170,17 @@ async function handleResponses(request, response, requestUrl) {
   });
   try {
     if (!requireCodexTransport(request, response)) return;
+    if (request.headers["x-jev-desktop-recovery"] !== undefined
+        && request.headers["x-jev-desktop-recovery"] !== "bridge-active") {
+      // Persistent provider definitions make saved chats readable without the
+      // bridge. They must never execute a sticky provider under a native label.
+      // Report an invalid request state; every native retry is blocked here too.
+      writeJson(response, 400, { error: {
+        type: "invalid_request_error", code: "jev_desktop_recovery_required",
+        message: "Jev Desktop needs to reconnect. No request was sent. Quit Codex and reopen it with Jev Codex.command to check compatibility and restore your selected route.",
+      } });
+      return;
+    }
     const exactRouteProbe = exactRouteProbeRequested(request.headers);
     const canonicalReplay = canonicalReplayRequested(request.headers);
     const encoded = await readRequestBody(request, { signal: controller.signal });

@@ -10,6 +10,8 @@ import tempfile
 import tomllib
 from urllib.parse import urlsplit
 
+import desktop_session
+
 
 LABELS = ("io.github.codex-router", "com.thibaultsaintjean.jev-router")
 
@@ -60,6 +62,8 @@ def protect_tree(root: Path) -> None:
 
 def begin() -> Path:
     home, codex, state = runtime_paths()
+    session = desktop_session.snapshot(home, state) if (
+        sys.platform == "darwin" and os.environ.get("JEV_INSTALL_DESKTOP") == "1") else None
     folder = codex / "jev-install-backups"
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     if folder.is_symlink() or folder.resolve().is_relative_to(state):
@@ -71,6 +75,11 @@ def begin() -> Path:
                 "config_present": config.exists(), "state_present": state.exists(),
                 "profile_present": (codex / "jev.config.toml").exists(),
                 "services": {}}
+    if session is not None:
+        manifest["desktop_session"] = session
+        if session["service_present"]:
+            private_copy(home / "Library/LaunchAgents" / f"{desktop_session.LABEL}.plist",
+                         backup / f"{desktop_session.LABEL}.plist")
     if config.exists():
         private_copy(config, backup / "config.toml")
     if manifest["profile_present"]:
@@ -119,6 +128,11 @@ def restore(backup: Path) -> None:
         private_copy(backup / "jev.config.toml", profile)
     else:
         profile.unlink(missing_ok=True)
+    session = manifest.get("desktop_session")
+    session_plist = backup / f"{desktop_session.LABEL}.plist"
+    session_original = session_plist.read_bytes() if session and session["service_present"] else None
+    if session is not None:
+        desktop_session.prepare_restore(session, home, session_original)
     # Quiesce every writer before replacing the shared state, and restart only
     # after all state and service definitions have been restored.
     if sys.platform == "darwin":
@@ -154,6 +168,8 @@ def restore(backup: Path) -> None:
                                          capture_output=True, timeout=15)
                 if started.returncode:
                     raise RuntimeError(f"service restoration failed for {label}")
+    if session is not None:
+        desktop_session.finish_restore(session, home, session_original)
     (backup / "result.json").write_text('{"status":"restored"}\n')
 
 
@@ -179,7 +195,7 @@ def validate_isolation() -> None:
     config = codex / "config.toml"
     base = tomllib.loads(config.read_text()) if config.exists() else {}
     selected = base.get("model_provider", "openai")
-    if selected in {"codex-router", "codex-router-signed", "jev-router"}:
+    if selected in {"codex-router", "codex-router-signed", "jev-router", "jev-router-auto", "jev-router-manual"}:
         raise ValueError("router cannot own the default Codex provider")
     if base.get("model", "").startswith("jev/"):
         raise ValueError("Jev cannot be the default Codex model")

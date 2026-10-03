@@ -29,7 +29,7 @@ fresh official-model thread for normal use.
 See [provider isolation](docs/release/provider-isolation.md) for configuration,
 recovery and verification details.
 
-An optional, build-specific [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
+An optional, contract-checked [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
 keeps the existing effort menu and separates Auto/Manual by name. The owner confirmed Auto/Manual switching and the effort slider in a fresh
 Desktop session on 2026-10-02. Ordinary installation does not enable this bridge.
 
@@ -146,10 +146,12 @@ open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
 ```
 
 That path assumes the default state directory. Use the installer-reported path
-if you configured another one. Opening the original app normally retains the
-official connection. The integration is build-specific; after an unsupported
-app update, the launcher opens ordinary Codex until the build is qualified.
-See [supported builds and recovery](docs/release/native-desktop-bridge.md).
+if you configured another one. Installation also registers the bridge for
+ordinary app launches and updater relaunches in your GUI session. A changed
+signed app is automatically tested against the native contract. If it fails,
+saved Jev chats remain readable and Jev inference reports a recovery error.
+Official models retain their native provider and defaults.
+See [update qualification and recovery](docs/release/native-desktop-bridge.md).
 
 ## Update an existing installation
 
@@ -205,7 +207,8 @@ its window is not enough. If it will not quit normally, use macOS **Force Quit**
 resort, not a required step for every update.
 
 For Desktop integration, reopen the installer-reported `Jev Codex.command`
-launcher rather than the ordinary app icon. With the default state directory:
+launcher to verify compatibility and restore the GUI session override.
+Subsequent ordinary launches use the same integration. With the default state directory:
 
 ```sh
 open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
