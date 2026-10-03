@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { isDeepStrictEqual } from 'node:util';
-import { MemoryRouteState } from './desktop-provider-state.mjs';
+import { MemoryRouteState, validateRouteRecord } from './desktop-provider-state.mjs';
 
 const JEV_PROVIDER = 'jev-router';
 const CARRIER = 'gpt-6.1-sol';
@@ -99,8 +99,16 @@ export class DesktopProviderBridge {
   }
 
   save(threadId, model, effort, phase, previous = this.record(threadId)) {
+    const route = { mode: modeOf(model) ?? 'official', model, effort: effort ?? null, phase };
+    // Reject proposed metadata before storage or native mutation. A rejected
+    // selection leaves the confirmed route intact and does not poison retries.
     try {
-      return this.state.write(threadId, { mode: modeOf(model) ?? 'official', model, effort: effort ?? null, phase }, previous?.revision ?? null);
+      validateRouteRecord({ ...route, version: 1, threadId, revision: (previous?.revision ?? 0) + 1 });
+    } catch {
+      refuse('invalid route selection; no settings or turn were sent.');
+    }
+    try {
+      return this.state.write(threadId, route, previous?.revision ?? null);
     } catch {
       this.blocked.add(threadId);
       refuse('private route state could not be saved; reopen or start a new chat before sending.');

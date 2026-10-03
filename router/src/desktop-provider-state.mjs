@@ -9,17 +9,22 @@ function privateFile(info, directory = false) {
     throw new Error('Jev route state must be private and owner-only');
   }
 }
-function valid(record) {
+export function validateRouteRecord(record) {
   if (!record || Object.keys(record).sort().join() !== KEYS.join()
       || record.version !== 1 || typeof record.threadId !== 'string' || !record.threadId
       || !Number.isSafeInteger(record.revision) || record.revision < 1
       || !['auto', 'manual', 'official'].includes(record.mode)
       || !['confirmed', 'pending'].includes(record.phase)
-      || typeof record.model !== 'string' || !record.model || !EFFORTS.includes(record.effort)
+      || typeof record.model !== 'string' || !record.model
+      // Official efforts belong to the native client, including client-level Ultra.
+      || (record.mode === 'official'
+        ? record.effort !== null && (typeof record.effort !== 'string' || !record.effort)
+        : !EFFORTS.includes(record.effort))
       || (record.mode !== 'official' && record.model !== `jev/${record.mode}`)
       || (record.mode === 'official' && record.model.startsWith('jev/'))) {
     throw new Error('Invalid Jev route record');
   }
+  if (Buffer.byteLength(JSON.stringify(record)) + 1 > 4096) throw new Error('Invalid Jev route record size');
   return record;
 }
 
@@ -43,7 +48,7 @@ export class PrivateRouteState {
       const info = fstatSync(fd);
       privateFile(info);
       if (info.size > 4096) throw new Error('Invalid Jev route record size');
-      const record = valid(JSON.parse(readFileSync(fd, 'utf8')));
+      const record = validateRouteRecord(JSON.parse(readFileSync(fd, 'utf8')));
       if (record.threadId !== threadId) throw new Error('Invalid Jev route record identity');
       return record;
     } finally { closeSync(fd); }
@@ -57,7 +62,7 @@ export class PrivateRouteState {
     try {
       const current = this.read(threadId);
       if ((current?.revision ?? null) !== expectedRevision) throw new Error('Jev route revision changed; reopen this chat');
-      const record = valid({ ...route, version: 1, threadId, revision: (current?.revision ?? 0) + 1 });
+      const record = validateRouteRecord({ ...route, version: 1, threadId, revision: (current?.revision ?? 0) + 1 });
       const fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try { writeFileSync(fd, `${JSON.stringify(record)}\n`); fsyncSync(fd); } finally { closeSync(fd); }
       renameSync(temporary, filename);
@@ -77,7 +82,7 @@ export class MemoryRouteState {
   write(threadId, route, expectedRevision) {
     const previous = this.read(threadId);
     if ((previous?.revision ?? null) !== expectedRevision) throw new Error('Jev route revision changed');
-    const record = valid({ ...route, version: 1, threadId, revision: (previous?.revision ?? 0) + 1 });
+    const record = validateRouteRecord({ ...route, version: 1, threadId, revision: (previous?.revision ?? 0) + 1 });
     this.records.set(threadId, record);
     return record;
   }

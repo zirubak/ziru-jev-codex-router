@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
 import { DesktopProviderBridge, JevBridgeError } from '../src/desktop-provider-bridge.mjs';
 
 const provider = { name: 'Jev', base_url: 'http://127.0.0.1:4202/v1', wire_api: 'responses', requires_openai_auth: false };
@@ -507,4 +508,59 @@ test('cached route cannot override a separately confirmed private selection', as
   const before = calls.length;
   await assert.rejects(bridge.handle('turn/start', { threadId: 'fixture', input: [] }), /changed|unconfirmed/);
   assert.equal(calls.slice(before).some((call) => call.method === 'turn/start'), false);
+});
+
+async function privateFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-ultra-bridge-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const context = fixture();
+  context.bridge.state = new PrivateRouteState(directory);
+  await context.bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'jev/manual', effort: 'high' });
+  return context;
+}
+
+test('official Max to Ultra after Jev persists and forwards native settings unchanged', async (t) => {
+  const { bridge, calls, thread } = await privateFixture(t);
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'gpt-6.1-sol', effort: 'max' });
+  calls.length = 0;
+  const params = { threadId: 'fixture', effort: 'ultra', collaborationMode: { mode: 'default', settings: { model: 'gpt-6.1-sol', reasoning_effort: 'ultra', developer_instructions: null } } };
+  await bridge.handle('thread/settings/update', params);
+  assert.deepEqual(calls.at(-1), { method: 'thread/settings/update', params });
+  assert.equal(thread.reasoningEffort, 'ultra');
+  assert.equal(bridge.state.read('fixture').effort, 'ultra');
+  assert.equal(bridge.state.read('fixture').phase, 'confirmed');
+  const restarted = new DesktopProviderBridge({ request: bridge.request, provider, state: bridge.state });
+  assert.equal((await restarted.handle('thread/resume', { threadId: 'fixture' })).reasoningEffort, 'ultra');
+});
+
+test('Jev to official Ultra keeps native effort on provider resume and settings update', async (t) => {
+  const { bridge, calls, thread } = await privateFixture(t);
+  calls.length = 0;
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'gpt-6.1-sol', effort: 'ultra' });
+  assert.equal(thread.modelProvider, 'openai');
+  assert.equal(calls.find((c) => c.method === 'thread/resume' && c.params.modelProvider === 'openai').params.config.model_reasoning_effort, 'ultra');
+  assert.equal(calls.at(-1).params.effort, 'ultra');
+  assert.equal(bridge.state.read('fixture').effort, 'ultra');
+});
+
+test('pre-RPC invalid official effort leaves confirmed route usable for valid retry', async (t) => {
+  const { bridge, calls } = await privateFixture(t);
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'gpt-6.1-sol', effort: 'max' });
+  const before = bridge.state.read('fixture');
+  calls.length = 0;
+  await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', effort: 42 }), /invalid.*selection/i);
+  assert.equal(calls.some((c) => c.method === 'thread/settings/update'), false);
+  assert.deepEqual(bridge.state.read('fixture'), before);
+  assert.equal(bridge.blocked.has('fixture'), false);
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', effort: 'high' });
+  assert.equal(bridge.state.read('fixture').effort, 'high');
+});
+
+test('private storage failures still block retries and dispatch no settings RPC', async (t) => {
+  const { bridge, calls } = await privateFixture(t);
+  bridge.state.write = () => { throw new Error('synthetic storage failure'); };
+  calls.length = 0;
+  await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', effort: 'max' }), /could not be saved/);
+  await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', effort: 'high' }), /unconfirmed/);
+  assert.equal(calls.some((c) => c.method === 'thread/settings/update'), false);
 });
