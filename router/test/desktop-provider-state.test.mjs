@@ -55,3 +55,20 @@ test('invalid values cannot be persisted and unexpected record fields are reject
   writeFileSync(join(directory, name), '{"version":99}', { mode: 0o600 });
   assert.throws(() => state.read('thread-1'), /record/);
 });
+
+
+test('official effort uses native non-empty string contract while Jev stays bounded', (t) => {
+  const { directory } = fixture(t);
+  const state = new PrivateRouteState(directory);
+  for (const effort of ['none', 'minimal', 'ultra', 'future-native-effort', null]) {
+    const id = `official-${effort}`;
+    const record = state.write(id, { ...route, mode: 'official', model: 'gpt-6.1-sol', effort }, null);
+    assert.deepEqual(new PrivateRouteState(directory).read(id), record);
+  }
+  for (const effort of ['', 42, {}, ['ultra'], 'x'.repeat(4096)]) {
+    assert.throws(() => state.write('invalid', { ...route, mode: 'official', model: 'gpt-6.1-sol', effort }, null), /record/);
+  }
+  for (const mode of ['auto', 'manual']) {
+    assert.throws(() => state.write(mode, { ...route, mode, model: `jev/${mode}`, effort: 'ultra' }, null), /record/);
+  }
+});

@@ -1,0 +1,86 @@
+{
+  "base_commit": "f2217b5d76e00be2e74cd887b99a9b560f552547",
+  "files": {
+    "router/src/desktop-provider-bridge.mjs": "e7d67ccc0d86e64451cc342e04ebafe8ecbcdcb8d9cee8d4766619dd4c2243c8",
+    "router/src/desktop-provider-state.mjs": "4ecddb67582426bd4f5fc81ca84b14302f3c4b573e4f2471ce05ef36f6db17a6",
+    "router/test/desktop-provider-bridge.test.mjs": "afb74ca8a0d3c3429809888bec1d1f5377a9aa22912ae2bb6571ea2d6708cee6",
+    "router/test/desktop-provider-native.test.mjs": "bcf9d525d0de82c522c5092c61bad0e2e1507c8f28606f794da308777e06dd02",
+    "router/test/desktop-provider-state.test.mjs": "6c0c33b8d767022ba46f8985e3f28114857db3c54376623076c0bc8b667acb8c",
+    "server/jev_server.py": "3c78e5618539850b0c6700fbe165d656cf24e8d6214ae93adbd5f4c04e4cdac7",
+    "server/ultra_advisory.py": "b225d33bb155e28b5c5b472e3645efb8e52181bbccf2d914118cd564f1c2c3c9",
+    "server/test_ultra_advisory.py": "4515c8096b38ca6c2c8fa29c3f97bc968a96315bc729483dfde55e4bc2c9dc55"
+  },
+  "checks": {
+    "focused_native_private_state": {
+      "tests": 40,
+      "passed": 40,
+      "skipped": 0
+    },
+    "node_suite": {
+      "tests": 4511,
+      "passed": 4480,
+      "skipped": 31,
+      "failed": 0
+    },
+    "python_suite": {
+      "tests": 256,
+      "failed": 0
+    },
+    "syntax": "PASS",
+    "offline_routing_dossier": "PASS",
+    "npm_check": "PASS",
+    "production_dependency_audit": "PASS; zero vulnerabilities",
+    "coverage": {
+      "lines": 97.64,
+      "branches": 83.85,
+      "functions": 100
+    }
+  },
+  "limitations": {
+    "integrated_code_python_review": "APPROVE on original correction and current main integration",
+    "github_ci": "DISABLED by owner; API enabled=false; historical unstarted jobs not PASS",
+    "desktop_ui": "UNVERIFIED; native application control unavailable",
+    "ultra_delegation_execution": "UNVERIFIED; no authenticated official Ultra turn sent",
+    "installation": "Corrected source installed through root transaction; running app retains older bridge until user restart",
+    "base_pr_4": "Provider integration prerequisite; owner authorized local-check-based merge"
+  },
+  "learning": "No durable learning",
+  "initial_checks": {
+    "focused_native_private_state": {
+      "tests": 40,
+      "passed": 40,
+      "skipped": 0
+    },
+    "node_suite": {
+      "tests": 4511,
+      "passed": 4474,
+      "skipped": 37,
+      "failed": 0
+    },
+    "python_suite": {
+      "tests": 255,
+      "failed": 0
+    },
+    "syntax": "PASS",
+    "offline_routing_dossier": "PASS",
+    "npm_check": "PASS",
+    "production_dependency_audit": "PASS; zero vulnerabilities",
+    "coverage": {
+      "lines": 97.64,
+      "branches": 83.85,
+      "functions": 100
+    }
+  },
+  "integration": {
+    "original_fix": "77afbb2b8afd93031c87a246a865043049094aaa",
+    "main_import": "631f98505562731d5ca9183256d4150d78e1b0bc",
+    "reviewed_behavior_tree": "b193387d5ac0bf5201758212b147f8992e075709",
+    "code_review": "APPROVE",
+    "python_review": "APPROVE",
+    "actions_enabled": false,
+    "initial_node_input_failures": 5,
+    "full_node_corrected_input_rerun": "PASS",
+    "private_runtime_python_tests": 262,
+    "root_desktop_install": "exit0; HTTP200 completed; no application restart"
+  }
+}

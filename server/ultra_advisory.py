@@ -58,7 +58,7 @@ def recommendation(model: str, advice: str) -> str:
         return ""
     target = "GPT-6 Astra" if model == "gpt-6-astra" else "GPT-6.1 Sol"
     return (
-        f"[Jev Ultra 추천] {REASONS[advice]} Codex 모델 메뉴에서 {target}의 Ultra를 "
+        f"[Jev Ultra 추천: {target}] {REASONS[advice]} Codex 모델 메뉴에서 {target}의 Ultra를 "
         "직접 선택하세요. 현재 Ultra는 실행 중이 아닙니다. 지원 클라이언트와 위임 "
         "권한이 필요하며, 로컬 Codex에서는 독립 작업의 하위 에이전트 위임을 명시적으로 "
         "요청하세요. 토큰 사용량이 늘 수 있습니다.\n\n"

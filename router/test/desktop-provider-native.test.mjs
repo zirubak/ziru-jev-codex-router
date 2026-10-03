@@ -70,6 +70,7 @@ async function connect(context) {
   const notices = [];
   const settings = [];
   let settingsWaiter;
+  let settingsTimer;
   let sequence = 0;
   let turnDone;
   const request = (method, params = {}) => new Promise((resolve, reject) => {
@@ -103,8 +104,8 @@ async function connect(context) {
     request, bridge, notices, settings,
     nextSettings(threadId) {
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Native settings notification timed out')), 10000);
-        settingsWaiter = { threadId, resolve(entry) { clearTimeout(timer); settingsWaiter = null; resolve(entry); } };
+        settingsTimer = setTimeout(() => reject(new Error('Native settings notification timed out')), 10000);
+        settingsWaiter = { threadId, resolve(entry) { clearTimeout(settingsTimer); settingsWaiter = null; resolve(entry); } };
       });
     },
     async turn(call, params) {
@@ -119,6 +120,7 @@ async function connect(context) {
       } finally { clearTimeout(timer); }
     },
     async close() {
+      clearTimeout(settingsTimer);
       lines.close();
       child.kill('SIGTERM');
       await new Promise((resolve) => child.once('exit', resolve));
@@ -224,5 +226,35 @@ test('native effort-only updates keep Jev model identity in Desktop settings not
       assert.equal(official.public.params.threadSettings.model, 'gpt-6.1-sol');
       assert.equal(official.public.params.threadSettings.modelProvider, 'openai');
     }
+  } finally { await connection.close(); }
+});
+
+test('bundled native settings accept official Ultra after Jev with unchanged notifications', {
+  skip: !binary || !catalog, timeout: 90000,
+}, async (t) => {
+  const context = await fixture(t);
+  const connection = await connect(context);
+  try {
+    const started = await connection.bridge.handle('thread/start', {
+      model: 'jev/manual', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
+    });
+    const threadId = started.thread.id;
+    // Exercise the actual local HTTP carrier before returning to native settings.
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId, effort: 'medium' });
+    assert.equal(context.calls.at(-1).mode, 'manual');
+    await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'max' });
+    const observed = connection.nextSettings(threadId);
+    const [notice] = await Promise.all([
+      observed, connection.bridge.handle('thread/settings/update', { threadId, effort: 'ultra' }),
+    ]);
+    assert.deepEqual(notice.public, notice.raw);
+    assert.equal(notice.raw.params.threadSettings.effort, 'ultra');
+    assert.equal(notice.raw.params.threadSettings.modelProvider, 'openai');
+    assert.equal(connection.bridge.state.read(threadId).effort, 'ultra');
+    await connection.bridge.handle('thread/settings/update', { threadId, model: 'jev/manual', effort: 'medium' });
+    await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'ultra' });
+    assert.equal(connection.bridge.state.read(threadId).effort, 'ultra');
+    // No authenticated official turn is sent; this checks native settings only.
+    assert.equal(context.calls.length, 1);
   } finally { await connection.close(); }
 });
