@@ -22,6 +22,9 @@ the portable embedded router tests.
   not a merge gate. Keep the local checks and integrated review above; merge
   reviewed candidates after those checks pass. Do not re-enable Actions
   without an explicit owner request.
+- Preserve advisory Windows assertions and failure diagnostics. Windows
+  product support remains unverified; its workflow does not authorize
+  re-enabling repository Actions.
 - One integrated code and Python specialist review of changed behavior is
   required. Reviewers are read-only; the owner stages and commits.
 - Installation uses the root transaction. Preserve unrelated settings and

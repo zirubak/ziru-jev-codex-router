@@ -92,3 +92,10 @@ the existing quality-sufficient project-token policy.
 Policy `split-v18-selection-modes` adds a Manual model-selection route with exact user effort. Auto retains adaptive model and effort selection. Both routes retain canonical replay and Plan guidance. Cache scope includes mode and Manual effort. Native quota fallback filters the configured inventory by the requested advertised effort; absent support returns an explicit error. The installer publishes both routes idempotently and preserves other models. See the README selection table and operations guide.
 
 Current-candidate validation and installation evidence are recorded in [selection-modes.md](selection-modes.md). The previous validation above belongs to the adaptive planning candidate, not this new candidate.
+
+## Subsequent merge-policy update (2026-10-02)
+
+The owner disabled repository Actions and replaced the earlier remote CI merge
+gate with local checks and integrated review. The policy and advisory Windows
+workflow definitions remain preserved. See [AGENTS.md](../../AGENTS.md).
+The earlier CI and billing observations above are historical evidence.
