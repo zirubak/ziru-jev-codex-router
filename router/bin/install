@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+# This fork installs only an explicit Codex profile. Never activate the legacy
+# root OpenAI URL/catalog writer, including on a first embedded install.
+CODEX_ROUTER_ISOLATED=1
+export CODEX_ROUTER_ISOLATED
+
 # The name on PATH may be a symlink to this script, so walk the chain before
 # locating the repository root, and resolve that root physically: `dirname $0`
 # alone points beside the link, and a logical `..` climbs out of a linked
@@ -338,7 +343,13 @@ else
   config_state_enabled=router
 fi
 config_was_enabled=false
-if [ "$(node "$config_manager" status 2>/dev/null | json_field "$config_state_field")" = "$config_state_enabled" ]; then
+if [ "$target" = codex ]; then
+  # In this fork the explicit profile, rather than a global marker, owns the
+  # integration. A failed embedded repair must retain an existing profile.
+  if [ "$(node "$config_manager" status | json_field profile_present)" = true ]; then
+    config_was_enabled=true
+  fi
+elif [ "$(node "$config_manager" status 2>/dev/null | json_field "$config_state_field")" = "$config_state_enabled" ]; then
   config_was_enabled=true
 fi
 service_was_installed=false

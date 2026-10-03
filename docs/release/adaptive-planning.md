@@ -86,3 +86,11 @@ names and repository-setting limitations.
 Revert the policy commit and restart the Jev service. No catalog, authentication
 or managed global configuration migration is required. Ordinary routing uses
 the existing quality-sufficient project-token policy.
+
+
+## Subsequent merge-policy update (2026-10-02)
+
+The owner disabled repository Actions and replaced the earlier remote CI merge
+gate with local checks and integrated review. The policy and advisory Windows
+workflow definitions remain preserved. See [AGENTS.md](../../AGENTS.md).
+The earlier CI and billing observations above are historical evidence.

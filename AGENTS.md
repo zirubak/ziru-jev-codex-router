@@ -17,16 +17,20 @@ the portable embedded router tests.
   Never use the owner's running service as a test fixture.
 - Required checks: `python3 -m unittest discover -s server -p 'test_*.py'`,
   `python3 -m compileall -q server poc`, `python3 poc/eval_routing.py`, and
-  `(cd router && npm run check && npm test)`. Preserve CI platform lanes.
-  The five jobs in `.github/workflows/ci.yml` gate macOS product merges.
-  Windows remains enabled in `windows-advisory.yml` as portability feedback;
-  run it by explicit manual dispatch only, not on each PR/main update.
-  its pending, failed or cancelled result does not gate macOS merges/releases.
-  Preserve its failure diagnostics and unverified Windows support disclosure.
+  `(cd router && npm run check && npm test)`.
+- The owner disabled repository GitHub Actions on 2026-10-02. Remote CI is
+  not a merge gate. Keep the local checks and integrated review above; merge
+  reviewed candidates after those checks pass. Do not re-enable Actions
+  without an explicit owner request.
+- Preserve advisory Windows assertions and failure diagnostics. Windows
+  product support remains unverified; its workflow does not authorize
+  re-enabling repository Actions.
 - One integrated code and Python specialist review of changed behavior is
   required. Reviewers are read-only; the owner stages and commits.
 - Installation uses the root transaction. Preserve unrelated settings and
-  existing services. The user performs the final Desktop restart.
+  existing services. Jev is an explicit `jev.config.toml` profile, selected with
+  `codex -p jev`. Never globally override the built-in OpenAI provider or catalog;
+  never restart Desktop automatically.
 - Runtime state is private, outside the source. Keep the service checkout on
   stable internal storage. Exclude personal instructions and raw research logs.
 - Record release evidence in `docs/release/`; reusable lessons belong in

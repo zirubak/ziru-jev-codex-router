@@ -6,11 +6,10 @@ changelog and upstream release artifacts are not releases of this project.
 ## Before publishing
 
 - Identify the exact source commit and scoped fixes; link their issues.
-- Require the five macOS product CI jobs listed in
-  [SUPPORT.md](SUPPORT.md) to complete successfully on that commit. Record
-  skips and investigate failures rather than lowering assertions or silently
-  disabling a platform. Windows runs separately as advisory portability
-  feedback; its pending, failed or cancelled result does not gate this release.
+- Require the local Python tests, compilation, offline routing dossier, and
+  embedded router syntax/test suite listed in [AGENTS.md](../AGENTS.md).
+  Record conditional skips and investigate failures. Repository Actions are
+  disabled by owner instruction; remote CI is not a merge gate.
 - Review dependency/lockfile changes, licenses and audit output.
 - Review context preservation, retry boundaries, privacy, and migration impact
   for any affected component.
@@ -28,7 +27,7 @@ changelog and upstream release artifacts are not releases of this project.
 ## After publishing
 
 - Verify the published tag/artifact resolves to the intended source.
-- Link the tested commit and CI run when closing issues.
+- Link the tested commit and local verification record when closing issues.
 - For a deployment, read back running policy/health separately from Git status.
 - Roll back with a reviewed revert or known source version, preserving user
   state. Never rewrite shared history or delete credentials as a rollback.
@@ -42,7 +41,7 @@ Branch protections and rulesets are repository settings, not implied by this
 document. Agree stable check names and merge policy before enforcing them;
 read back the actual GitHub settings before claiming protection. Do not make a
 new or failing platform check a required merge gate without qualification.
-The required job names are `Jev server (ubuntu-latest, Python 3.11)`,
+The preserved workflow job names are `Jev server (ubuntu-latest, Python 3.11)`,
 `Jev server (macos-latest, Python 3.12)`, `Embedded router (ubuntu-latest)`,
 `Embedded router (macos-latest)` and
 `Codex app-server contract (0.155.0-alpha.9.2)`. Exclude
@@ -54,7 +53,11 @@ On 2026-10-02, the protection and ruleset API reads returned HTTP 403 with
 No branch protection or ruleset update is claimed. The workflow split and
 documented owner merge policy apply independently of those unavailable settings.
 
-## Actions usage controls (2026-10-02)
+## Historical Actions usage controls (2026-10-02)
+
+The owner subsequently disabled repository Actions. Local checks and integrated
+review now gate merges; do not re-enable Actions without explicit authorization.
+The controls and billing observations below describe the earlier policy.
 
 - Windows portability feedback is manual-only; keep its full assertions and
   visible failure results without launching it on every PR or `main` push.
@@ -81,3 +84,9 @@ changing visibility alone resolves the previously observed HTTP 403. Never put
 raw access tokens in README files, image URLs, commits or chat. This note is a
 future release checklist item, not authorization to change repository visibility
 or create credentials automatically.
+
+## Published previews
+
+- [v0.1.0-preview.1 notes](release/v0.1.0-preview.1.md) — first private macOS
+  preview, source `cf7c6c0b2ced07aa40b8c39f777c9dec8b9a18f2`.
+  [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.1).
