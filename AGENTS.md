@@ -21,7 +21,9 @@ the portable embedded router tests.
 - One integrated code and Python specialist review of changed behavior is
   required. Reviewers are read-only; the owner stages and commits.
 - Installation uses the root transaction. Preserve unrelated settings and
-  existing services. The user performs the final Desktop restart.
+  existing services. Jev is an explicit `jev.config.toml` profile, selected with
+  `codex -p jev`. Never globally override the built-in OpenAI provider or catalog;
+  never restart Desktop automatically.
 - Runtime state is private, outside the source. Keep the service checkout on
   stable internal storage. Exclude personal instructions and raw research logs.
 - Record release evidence in `docs/release/`; reusable lessons belong in

@@ -10,6 +10,11 @@ The installer and background-service contract are macOS-specific because they
 install launchd services and publish the model into the local Codex desktop
 configuration.
 
+Jev now uses an explicit `codex -p jev` profile instead of the normal Desktop
+picker. Official Codex traffic and its catalog remain direct. Profile support
+was verified with Desktop `0.159.0-alpha.12.1` and CLI `0.159.3`; see
+[provider isolation](release/provider-isolation.md).
+
 The embedded router under `router/` remains a cross-platform fork. Its portable
 runtime and state-management suite is required on Ubuntu, macOS, and Windows
 with Node.js 24 in CI. Passing that matrix does not make the root launchd
@@ -24,6 +29,7 @@ installer supported on Linux or Windows.
 | Embedded router | Ubuntu, macOS, Windows / Node.js 24 | Portable fork behavior, state safety, and platform-specific branches |
 | Browser panel | Ubuntu / Playwright Chromium | Browser UI tests execute instead of silently skipping for a missing browser |
 | Codex app-server contract | Ubuntu / `codex-cli 0.155.0-alpha.9.2` | A real, known Codex binary completes both login-free provider configurations |
+| Isolated profile contract | Ubuntu / `codex-cli 0.159.3` | Explicit Jev profile and ordinary provider use separate authenticated HTTP transports |
 
 The Codex contract lane sets `CODEX_ROUTER_REQUIRE_REAL_CODEX=1`; absence of the
 binary is a failure, never a skip. It also checks the exact CLI version before

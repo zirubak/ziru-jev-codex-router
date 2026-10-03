@@ -19,6 +19,7 @@ codex_home=${CODEX_HOME:-$HOME/.codex}
 state_dir=${MODEL_ROUTER_STATE_DIR:-${CODEX_ROUTER_STATE_DIR:-${KIMI_CODEX_STATE_DIR:-$codex_home/codex-router}}}
 export CODEX_HOME=$codex_home
 export CODEX_ROUTER_STATE_DIR=$state_dir
+export CODEX_ROUTER_ISOLATED=1
 umask 077
 
 usage() {
@@ -131,8 +132,9 @@ CODEX_HOME=$codex_home CODEX_ROUTER_STATE_DIR=$state_dir \
   bash "$repo_dir/server/install-service.sh"
 python3 "$repo_dir/server/smoke.py"
 python3 "$transaction" validate
+python3 "$transaction" validate-isolation
 python3 "$transaction" commit "$backup"
 trap - EXIT HUP INT TERM
 
 printf '\nJev Codex Router is installed from %s.\n' "$repo_dir"
-printf 'Fully quit and reopen Codex, then select "Jev Codex Router".\n'
+printf 'Official Codex remains direct. Select Jev explicitly with: codex -p jev\n'

@@ -61,6 +61,7 @@ import {
   loopback,
 } from "./paths.mjs";
 import { scanTomlDocument } from "./toml-structure.mjs";
+import { isolatedCodexConfigured, manageIsolatedCodex } from "./isolated-codex-config.mjs";
 
 const managedRouterBaseUrls = new Set([
   loopback(PORTS.router, "/v1"),
@@ -1600,6 +1601,22 @@ function atomicWrite(contents) {
     if (existsSync(temporary)) unlinkSync(temporary);
     throw error;
   }
+}
+
+if (isolatedCodexConfigured()) {
+  const contents = existsSync(CONFIG_PATH) ? readFileSync(CONFIG_PATH, "utf8") : "";
+  // The existing ownership-aware cleaner preserves foreign tables even when
+  // Desktop has moved them inside an old router marker block.
+  const legacy = clean(contents);
+  const cleaned = markerPairs.some(([start]) => contents.includes(start)) ||
+    contents.includes(MERGED_CATALOG_PATH)
+    ? `${[...trimBlankEdges(legacy.rootLines), "", ...trimBlankEdges(legacy.tableLines)].join("\n").trimEnd()}\n`
+    : contents;
+  if (readProviderModeState() || readSignedProviderModeState() || readCodexRouterDefault()) {
+    throw new Error("Active legacy provider/default ownership must be restored before isolated install.");
+  }
+  process.stdout.write(`${JSON.stringify(manageIsolatedCodex(command, contents, cleaned))}\n`);
+  process.exit(0);
 }
 
 if (!new Set([
