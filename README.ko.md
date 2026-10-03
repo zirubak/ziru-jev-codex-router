@@ -66,6 +66,49 @@ bin/jev-codex-router update
 [preview.2 변경 사항과 알려진 한계](docs/release/v0.1.0-preview.2.md),
 [진단·복구 안내](server/INSTALL.md)를 참고하세요.
 
+### Codex에게 업데이트 맡기기
+
+Jev를 설치한 Mac의 Codex에 아래 프롬프트를 복사해 넣으세요.
+
+```text
+https://github.com/zirubak/ziru-jev-codex-router 의 기존 ZIRU Jev Codex Router
+설치를 업데이트해 줘.
+
+설치된 서비스가 사용하는 checkout을 찾고 해당 AGENTS.md와 업데이트 안내를 읽어.
+업데이트 전에 remote, 현재 commit, 작업 트리 변경과 앱 호환성을 확인해.
+로컬 변경·개인 관측 코드·인증 정보·무관한 Codex 설정·보호 백업을 보존해.
+--force를 쓰거나 변경을 버리거나 새 clone으로 기존 checkout을 교체하지 마.
+로컬 변경 때문에 안전하게 업데이트할 수 없으면 충돌 파일과 필요한 결정을 보고하고
+그 파일을 바꾸기 전에 멈춰.
+
+문서의 main 업데이트 명령 bin/jev-codex-router update를 사용해.
+이 명령은 최신 release tag에 고정하는 설치가 아니므로 최신 릴리즈와 실제 설치 commit을
+구분해 보고해. 선택형 Desktop 실행기가 이미 설치돼 있으면 루트
+./install.sh --desktop 트랜잭션으로 갱신해. 사용하지 않던 Desktop 연결은 추가하지 마.
+
+문서의 status·doctor·smoke 검사를 실행해. smoke는 사용량을 소비할 수 있어.
+실행한 검사, 실패, 설치 commit과 실행기 경로를 보고해.
+실행 중인 Desktop에 업데이트가 로드됐다고 단정하지 마.
+비밀 출력·역사적 config 전체 복원·앱 패치·Desktop 종료/재시작은 하지 마.
+마지막에 내가 작업을 저장하고 Command+Q로 Codex를 완전히 종료한 뒤,
+Desktop 연결을 사용한다면 검증된 Jev 실행기로 다시 여는 방법을 알려줘.
+```
+
+### Desktop 재실행은 직접 마무리하세요
+
+작업을 저장한 뒤 **Command+Q**로 Codex 앱을 완전히 종료하세요. 창만 닫는 것으로는
+충분하지 않습니다. 정상 종료되지 않을 때만 저장 가능한 작업을 저장하고 macOS
+**강제 종료**(**Option+Command+Escape**)를 사용하세요. 매번 강제 종료할 필요는 없습니다.
+
+Desktop 연결을 사용한다면 원래 앱 아이콘 대신 설치기가 알려준 `Jev Codex.command`로
+다시 여세요. 기본 상태 디렉터리에서는 다음 명령을 사용합니다.
+
+```sh
+open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
+```
+
+CLI 프로필만 사용한다면 새 `codex -p jev` 세션을 시작하세요.
+
 ## 설치
 
 현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.

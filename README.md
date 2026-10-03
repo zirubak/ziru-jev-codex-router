@@ -167,6 +167,52 @@ update, run `./install.sh --desktop` separately. The updater does not forward
 See the [preview.2 changes and known limits](docs/release/v0.1.0-preview.2.md)
 and [diagnostics and recovery](server/INSTALL.md).
 
+### Ask Codex to update it
+
+Paste this into Codex on the Mac where Jev is installed:
+
+```text
+Update my existing ZIRU Jev Codex Router installation from
+https://github.com/zirubak/ziru-jev-codex-router.
+
+Find the checkout used by the installed services and read its AGENTS.md and
+update instructions. Confirm the remote, current commit, working-tree changes,
+and app compatibility before updating. Preserve local changes, private observer
+code, credentials, unrelated Codex settings and protected backups. Do not use
+--force, discard changes or replace the checkout with a new clone. If local
+changes prevent a safe update, report the conflicting files and the decision
+needed before changing them.
+
+Use bin/jev-codex-router update for the documented main-branch update. This is
+not an installation pinned to the latest release tag; report the latest release
+and the actual installed commit separately. If the optional Desktop launcher is
+already installed, refresh it with the root ./install.sh --desktop transaction.
+Do not add Desktop integration if it was not enabled.
+
+Run the documented status, doctor and smoke checks; the smoke may consume usage.
+Report which checks ran, failures, the installed commit and the launcher path.
+Do not claim the running Desktop has loaded the update yet. Do not print secrets,
+restore a historical config wholesale, patch the app or stop/restart Desktop.
+Finish with instructions for me to save my work, fully quit Codex with Command+Q,
+and reopen it using the verified Jev launcher if Desktop integration is enabled.
+```
+
+### Finish the Desktop update yourself
+
+Save your work, then press **Command+Q** to quit Codex completely. Closing only
+its window is not enough. If it will not quit normally, use macOS **Force Quit**
+(**Option+Command+Escape**) after saving any work you can. Force Quit is a last
+resort, not a required step for every update.
+
+For Desktop integration, reopen the installer-reported `Jev Codex.command`
+launcher rather than the ordinary app icon. With the default state directory:
+
+```sh
+open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
+```
+
+If you only use the CLI profile, start a new `codex -p jev` session instead.
+
 ## Install
 
 This is a **private preview for macOS Codex Desktop**. You need access to this repository, a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).
