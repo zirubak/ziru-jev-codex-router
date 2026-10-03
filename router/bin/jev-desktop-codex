@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync, lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,15 @@ try {
     throw new Error('Invalid isolated Jev provider');
   }
   nativeBinary = manifest.nativeBinary;
+  // Updater helpers can retain the launch environment and respawn this adapter.
+  // Recheck both identities here, not just when the application was launched.
+  if (!isAbsolute(manifest.appAsar ?? '')
+      || !/^[a-f0-9]{64}$/.test(manifest.expectedAppSha256 ?? '')
+      || !/^[a-f0-9]{64}$/.test(manifest.expectedNativeSha256 ?? '')
+      || createHash('sha256').update(readFileSync(manifest.appAsar)).digest('hex') !== manifest.expectedAppSha256
+      || createHash('sha256').update(readFileSync(nativeBinary)).digest('hex') !== manifest.expectedNativeSha256) {
+    throw new Error('Application update requires bridge revalidation');
+  }
   provider = manifest.provider;
 } catch {
   process.stderr.write('Jev Desktop integration unavailable; using unmodified native Codex.\n');
