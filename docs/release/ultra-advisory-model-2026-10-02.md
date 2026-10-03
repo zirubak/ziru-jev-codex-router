@@ -20,7 +20,10 @@ forms are removed from assistant replay; structured output remains protected.
 - Installation preserved config.toml byte-for-byte against its transaction snapshot;
   jev.config.toml also matched the pre-task hash. Concurrent pre-install changes
   to the base model/effort and project settings were retained.
-- Remote CI and merge are pending. UI screenshot verification was not performed.
+- Remote CI jobs did not start because of account billing/spending limits;
+  this is not a CI pass. On 2026-10-02 the owner explicitly disabled repository
+  GitHub Actions and removed remote CI as a merge gate. Local checks and the
+  integrated review remain required. UI screenshot verification was not performed.
 
 ## Candidate SHA-256
 
