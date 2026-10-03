@@ -1,9 +1,9 @@
 # Optional native Desktop integration
 
-Status: follow-up correction candidate. Native picker visibility and actual
-Auto/Manual inference were observed. A subsequent effort-slider test exposed
-an alias leak in nested native settings notifications; its correction still
-requires signed-in Desktop acceptance after reloading the adapter.
+Status: the owner confirmed Auto/Manual switching and effort-slider behavior
+in a fresh Desktop session on 2026-10-02 after the nested-notification alias
+correction. This is owner-reported UI acceptance, separate from the native
+protocol and actual inference evidence below.
 This is an internal, build-specific integration, not an officially supported
 Desktop extension API.
 
@@ -104,3 +104,14 @@ permissions or discard existing history.
 The isolated tests cover native provider switching, reopening saved threads,
 permission preservation, rollback, callback IDs, config isolation and installer
 idempotence. They do not replace signed-in native UI/inference/compaction checks.
+
+
+## Responses-lite quota boundary (2026-10-02)
+
+The native Desktop wire contract carries tools in `input[].additional_tools`.
+Configured external fallback adapters have no qualified Responses-lite
+transport. On known or newly observed native quota exhaustion, these calls
+return HTTP 503 with an explicit contract error before external execution.
+Healthy native calls preserve their complete replay. Standard Responses
+profile calls retain the existing compatible quota fallback. No native tools
+are silently dropped or translated into an unverified external schema.

@@ -192,6 +192,51 @@ class SelectionModeHttp(unittest.TestCase):
         error.exception.close()
         self.assertEqual(Edge.payloads, [])
 
+    def test_lite_known_quota_rejects_external_execution(self) -> None:
+        for mode in ("auto", "manual"):
+            for header_only in (False, True):
+                with self.subTest(mode=mode, header_only=header_only):
+                    history = [message("user", "Inspect")]
+                    if not header_only:
+                        history.insert(0, {"type": "additional_tools", "role": "developer",
+                                           "tools": [{"type": "web_search"}]})
+                    headers = {"x-openai-internal-codex-responses-lite": "true"} if header_only else {}
+                    with mock.patch.object(jev, "native_dry", return_value="quota"), mock.patch.object(
+                        jev, "fallback_candidates", return_value=["fixture/fallback"],
+                    ) as candidates, self.assertRaises(urllib.error.HTTPError) as error:
+                        self.call(payload_for(history, model=mode, reasoning={"effort": "medium"}), headers)
+                    self.assertEqual(error.exception.code, 503)
+                    self.assertIn("Responses-lite", error.exception.read().decode())
+                    error.exception.close()
+                    candidates.assert_not_called()
+                    self.assertEqual(Edge.payloads, [])
+
+    def test_lite_observed_quota_rejects_external_retry(self) -> None:
+        def limited(edge: Edge) -> None:
+            body = json.loads(edge.rfile.read(int(edge.headers["Content-Length"])))
+            Edge.payloads.append(body)
+            raw = b'{"error":{"code":"usage_limit_reached","message":"usage limit reached"}}'
+            edge.send_response(429)
+            edge.send_header("Content-Type", "application/json")
+            edge.send_header("Content-Length", str(len(raw)))
+            edge.end_headers()
+            edge.wfile.write(raw)
+
+        history = [{"type": "additional_tools", "role": "developer",
+                    "tools": [{"type": "function", "name": "spawn_agent"}]},
+                   message("user", "Inspect")]
+        with mock.patch.object(Edge, "do_POST", new=limited), mock.patch.object(
+            jev, "fallback_candidates", return_value=["fixture/fallback"],
+        ) as candidates, mock.patch.object(jev, "mark_native_dry"), self.assertRaises(urllib.error.HTTPError) as error:
+            self.call(payload_for(history), {"x-openai-internal-codex-responses-lite": "true"})
+        self.assertEqual(error.exception.code, 503)
+        self.assertIn("Responses-lite", error.exception.read().decode())
+        error.exception.close()
+        candidates.assert_not_called()
+        self.assertEqual(len(Edge.payloads), 1)
+        self.assertIn(Edge.payloads[0]["model"], jev.TIERS)
+        self.assertEqual(Edge.payloads[0]["input"], history)
+
     def test_unknown_route_rejected_before_judge(self) -> None:
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.server.server_address[1]}/v1/responses",
