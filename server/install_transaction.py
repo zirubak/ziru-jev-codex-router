@@ -7,6 +7,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tomllib
+from urllib.parse import urlsplit
 
 
 LABELS = ("io.github.codex-router", "com.thibaultsaintjean.jev-router")
@@ -24,6 +26,10 @@ def runtime_paths() -> tuple[Path, Path, Path]:
     state = state.resolve()
     if codex.is_relative_to(state):
         raise ValueError("state directory cannot contain CODEX_HOME")
+    route_state = (codex / "jev-desktop-thread-routes").resolve()
+    for managed in (state, (codex / "jev-install-backups").resolve()):
+        if route_state.is_relative_to(managed) or managed.is_relative_to(route_state):
+            raise ValueError("Desktop route state must be separate from install state and backups")
     return home, codex, state
 
 
@@ -63,9 +69,12 @@ def begin() -> Path:
     config = codex / "config.toml"
     manifest = {"version": 1, "codex_home": str(codex), "state": str(state),
                 "config_present": config.exists(), "state_present": state.exists(),
+                "profile_present": (codex / "jev.config.toml").exists(),
                 "services": {}}
     if config.exists():
         private_copy(config, backup / "config.toml")
+    if manifest["profile_present"]:
+        private_copy(codex / "jev.config.toml", backup / "jev.config.toml")
     if state.exists():
         shutil.copytree(state, backup / "state", symlinks=True)
         protect_tree(backup / "state")
@@ -103,6 +112,13 @@ def restore(backup: Path) -> None:
             replacement.unlink(missing_ok=True)
     else:
         config.unlink(missing_ok=True)
+    profile = codex / "jev.config.toml"
+    if profile.is_symlink():
+        raise ValueError("refusing to overwrite a linked profile")
+    if manifest.get("profile_present"):
+        private_copy(backup / "jev.config.toml", profile)
+    else:
+        profile.unlink(missing_ok=True)
     # Quiesce every writer before replacing the shared state, and restart only
     # after all state and service definitions have been restored.
     if sys.platform == "darwin":
@@ -150,6 +166,71 @@ def validate_catalog() -> None:
     print(json.dumps({"catalog_valid": True, "models": len(models)}))
 
 
+def router_endpoint(value: str | None) -> bool:
+    if not value:
+        return False
+    url = urlsplit(value)
+    ports = {4202, 4102, int(os.environ.get("CODEX_ROUTER_PORT", "4202"))}
+    return url.hostname in {"127.0.0.1", "localhost", "::1"} and url.port in ports
+
+
+def validate_isolation() -> None:
+    _, codex, state = runtime_paths()
+    config = codex / "config.toml"
+    base = tomllib.loads(config.read_text()) if config.exists() else {}
+    selected = base.get("model_provider", "openai")
+    if selected in {"codex-router", "codex-router-signed", "jev-router"}:
+        raise ValueError("router cannot own the default Codex provider")
+    if base.get("model", "").startswith("jev/"):
+        raise ValueError("Jev cannot be the default Codex model")
+    providers = base.get("model_providers", {})
+    if any(router_endpoint(url) for url in [base.get("openai_base_url"),
+           providers.get("openai", {}).get("base_url"), providers.get(selected, {}).get("base_url")]):
+        raise ValueError("router cannot own the global OpenAI URL")
+    if base.get("model_catalog_json") and Path(base["model_catalog_json"]).resolve() == state / "merged-models.json":
+        raise ValueError("router catalog cannot be global")
+    profile = tomllib.loads((codex / "jev.config.toml").read_text())
+    validate_profile(profile, state)
+    print(json.dumps({"isolation_valid": True}))
+
+
+def validate_profile(profile: dict[str, object], state: Path) -> None:
+    try:
+        validate_profile_fields(profile, state)
+    except (KeyError, TypeError, AttributeError, ValueError) as error:
+        raise ValueError("Jev profile must use its own authenticated local provider") from error
+
+
+def validate_profile_fields(profile: dict[str, object], state: Path) -> None:
+    providers = profile.get("model_providers")
+    if not isinstance(providers, dict):
+        raise ValueError("profile providers must be a table")
+    provider = providers.get("jev-router")
+    if not isinstance(provider, dict):
+        raise ValueError("Jev provider must be a table")
+    auth = provider.get("auth", {})
+    if not isinstance(auth, dict):
+        raise ValueError("Jev authentication must be a table")
+    command = auth.get("command")
+    args = auth.get("args")
+    catalog = profile.get("model_catalog_json")
+    if (not isinstance(command, str) or not isinstance(catalog, str)
+            or not isinstance(args, list) or not all(isinstance(arg, str) for arg in args)):
+        raise ValueError("Jev authentication and catalog must use string paths")
+    port = int(os.environ.get("CODEX_ROUTER_PORT", "4202"))
+    if (profile.get("model_provider") != "jev-router" or profile.get("model") != "jev/auto"
+            or provider.get("requires_openai_auth") is not False
+            or provider.get("base_url") != f"http://127.0.0.1:{port}/v1"
+            or provider.get("wire_api") != "responses"
+            or Path(catalog).resolve() != state / "merged-models.json"
+            or not Path(command).is_absolute()
+            or len(args) != 2
+            or not args[0].endswith("/src/caller-key-auth-command.mjs")
+            or Path(args[1]).resolve() != state / "caller-secret"
+            or "openai_base_url" in profile):
+        raise ValueError("Jev profile must use its own authenticated local provider")
+
+
 def main() -> None:
     command = sys.argv[1]
     if command == "begin":
@@ -158,6 +239,8 @@ def main() -> None:
         restore(Path(sys.argv[2]))
     elif command == "validate":
         validate_catalog()
+    elif command == "validate-isolation":
+        validate_isolation()
     elif command == "commit":
         backup = Path(sys.argv[2])
         (backup / "result.json").write_text('{"status":"committed"}\n')

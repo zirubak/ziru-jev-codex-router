@@ -987,8 +987,10 @@ function normalizeNativePromptCacheCompatibility(payload) {
   return payload;
 }
 
-function routedHeaders() {
+function routedHeaders(request, route) {
   return {
+    ...(requiresCanonicalReplay(route) && request?.headers["x-openai-internal-codex-responses-lite"] === "true"
+      ? { "x-openai-internal-codex-responses-lite": "true" } : {}),
     Authorization: `Bearer ${INTERNAL_KEY}`,
     "Content-Type": "application/json",
     "Accept-Encoding": "identity",
@@ -999,8 +1001,12 @@ function routedHeaders() {
 // DeepSeek's current model already speaks Codex's wire protocol. The shared
 // API forwarder still owns credentials and upstream transport; bypass only
 // LiteLLM, whose unknown-model fallback simulates native Responses streaming.
-function routedResponsesTarget(route) {
-  return `${usesDeepSeekResponses(route) ? API_BASE : GATEWAY_BASE}/responses`;
+function routedResponsesTarget(route, request) {
+  // Jev's native wire format must reach its decision relay without a gateway
+  // translating additional_tools or discarding the protocol negotiation header.
+  const nativeJev = requiresCanonicalReplay(route)
+    && request?.headers["x-openai-internal-codex-responses-lite"] === "true";
+  return `${usesDeepSeekResponses(route) || nativeJev ? API_BASE : GATEWAY_BASE}/responses`;
 }
 
 // LiteLLM translates Codex Responses requests into Chat Completions only after
@@ -2935,9 +2941,9 @@ async function summarizeWith(
   }
   // Compaction is another hop on the route's transport: a Grok summary can
   // reason for as long as a turn, so it uses the same long-idle pool.
-  const upstream = await fetchForRoute(route, routedResponsesTarget(route), {
+  const upstream = await fetchForRoute(route, routedResponsesTarget(route, request), {
     method: "POST",
-    headers: routedHeaders(),
+    headers: routedHeaders(request, route),
     body: serialized,
     signal,
   });
@@ -3800,8 +3806,8 @@ async function buildRoutedRequest({ request, payload, route, agedInput }) {
   if (rejectsWebSearchOptions(route)) delete routed.web_search_options;
   return {
     body: Buffer.from(JSON.stringify(routed), "utf8"),
-    target: routedResponsesTarget(route),
-    headers: routedHeaders(),
+    target: routedResponsesTarget(route, request),
+    headers: routedHeaders(request, route),
     // The exact mode used while constructing this body. Failover compares it
     // with the immutable source contract as well as live state immediately
     // before send, so transient sidecar changes cannot validate stale bytes.
@@ -4169,6 +4175,20 @@ async function handleResponses(request, response, requestUrl) {
     const encoded = await readRequestBody(request, { signal: controller.signal });
     const body = await decodeBody(encoded, request.headers["content-encoding"]);
     let payload = await parseBodyAsync(body);
+    const jevMode = request.headers["x-jev-selection-mode"];
+    if (jevMode !== undefined) {
+      // A mode marker is routing data, never authentication. The existing
+      // transport check above must pass before this per-request mapping.
+      if (!["auto", "manual"].includes(jevMode) || payload?.model !== "gpt-6.1-sol") {
+        writeJson(response, 400, { error: {
+          type: "invalid_request_error", code: "invalid_jev_selection",
+          message: "Jev selection requires one auto/manual mode and its supported native model.",
+        } });
+        return;
+      }
+      payload.model = `jev/${jevMode}`;
+      delete request.headers["x-jev-selection-mode"];
+    }
     controller.signal.throwIfAborted();
     requestedModel = typeof payload.model === "string" ? payload.model : "";
     let registeredRoute =

@@ -8,25 +8,24 @@
 
 [English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조) · [프로젝트에 스타 남기기](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
-ZIRU는 Codex Desktop의 모델 메뉴에 **Jev Codex Router**를 추가합니다. 이 항목을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다.
+ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합니다. 이 프로필을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다.
 
 목표는 필요한 품질을 확보하면서 코딩·검사·리뷰·수정에 드는 불필요한 토큰 사용을 줄이는 것입니다. 버튼 문구를 바꾸는 일과 최종 보안 리뷰에는 서로 다른 접근이 필요하니까요.
 
-## 한 번 선택하고, 평소처럼 작업하세요
+## 격리된 프로필을 선택하세요
 
-<p align="center"><img src="docs/assets/model-picker.png" width="340" alt="기존 모델 아래에 Jev Codex Router가 추가되고 선택된 Codex 모델 메뉴"></p>
+1. 아래 루트 설치기로 설치합니다.
+2. `codex -p jev`를 실행하여 Jev 모델과 전용 로컬 제공자를 함께 선택합니다.
+3. 평소처럼 요청합니다. 표시 기능을 켜면 실제 모델·effort 라벨을 확인할 수 있습니다.
 
-*설치하면 기존 모델 메뉴에 Jev Codex Router가 추가됩니다. 원래 모델도 그대로 선택할 수 있습니다. 위 화면은 한 설치 환경의 예시이며, 자동 라우팅 후보는 아래에 설명한 세 모델입니다.*
+일반 Codex와 Desktop 모델 목록은 공식 OpenAI/ChatGPT 제공자와 목록을 유지합니다.
+설치기는 전역 `openai_base_url`이나 모델 목록을 바꾸지 않습니다. 기존 대화는
+저장된 모델·제공자를 유지하므로 일반 사용은 새 공식 모델 대화에서 확인하세요.
+자세한 설정·복구·검증은 [제공자 격리 안내](docs/release/provider-isolation.md)를 참고하세요.
 
-1. **설치 후 Codex를 재시작합니다.** 아래 안내대로 설치한 뒤 앱을 완전히 종료하고 다시 엽니다.
-2. **대화의 모델 메뉴에서 Jev Codex Router를 선택합니다.**
-3. **평소처럼 요청합니다.** 모델 표시를 켜면 응답에 `[gpt-6.1-sol / high]` 같은 라벨이 붙습니다.
-
-메뉴의 라우터 이름 옆에 보이는 **High**는 대화에서 선택한 설정입니다. 실제 요청에 사용된 모델과 effort는 응답 라벨에서 확인하며, 작업이 진행되면서 바뀔 수 있습니다. 직접 모델을 고르고 싶을 때는 같은 메뉴에서 일반 모델을 선택하면 됩니다.
-
-![케이브맨 4컷 만화: Jev를 한 번 선택하고 평소처럼 요청하면 작업에 맞는 모델과 effort가 표시되어 코딩에 집중할 수 있습니다.](docs/assets/quickstart-comic.png)
-
-*오타 수정과 까다로운 버그 리뷰에는 서로 다른 모델·effort가 선택될 수 있습니다. 만화의 선택은 예시이며 보장된 결과가 아닙니다.*
+기존 effort 메뉴를 유지하는 [Desktop 연결 후보](docs/release/native-desktop-bridge.md)도
+별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
+적용합니다. 사용자가 2026-10-02 새 Desktop 세션에서 전환과 effort 슬라이더의 정상 동작을 확인했습니다. 일반 설치로 활성화되지 않습니다.
 
 ## 설치
 
@@ -84,11 +83,11 @@ macOS, Node.js 22.19 이상, Python 3.11 이상, Codex 로그인과 필요한 �
 [모델 / effort] 표시를 켜고 문서의 status, doctor, smoke 검사를 실행해.
 health 확인만으로 설치 성공이라고 판단하지 마.
 설치한 revision, 검사 결과와 복원 실패 여부를 보고해줘.
-Codex 재시작은 내가 하도록 남겨두고, Jev Codex Router 선택 방법과
-일반 모델로 돌아가는 방법을 알려줘.
+Codex를 재시작하지 말고 codex -p jev 선택 방법과
+새 일반 모델 대화의 공식 경로 확인 방법을 알려줘.
 ```
 
-설치에는 사용량이 발생할 수 있는 실제 smoke 요청이 포함됩니다. 마지막 앱 재시작은 사용자가 직접 합니다.
+설치에는 사용량이 발생할 수 있는 실제 smoke 요청이 포함됩니다. 앱은 자동 재시작하지 않습니다.
 
 <details>
 <summary><strong>터미널에서 직접 설치하려면</strong></summary>
@@ -111,9 +110,27 @@ bin/jev-codex-router router doctor
 bin/jev-codex-router smoke
 ```
 
-Codex를 종료하고 다시 연 뒤 **Jev Codex Router**를 선택합니다. 서비스를 활성화하지 않고 의존성만 준비하려면 `./install.sh --prepare-only`를 사용하세요. 설치 세부 사항과 복구 방법은 [운영 안내](server/INSTALL.md)에 있습니다.
+`codex -p jev`로 **Jev Codex Router**를 명시적으로 선택합니다. 서비스를 활성화하지 않고 의존성만 준비하려면 `./install.sh --prepare-only`를 사용하세요. 설치 세부 사항과 복구 방법은 [운영 안내](server/INSTALL.md)에 있습니다.
 
 </details>
+
+## 두 선택 모드
+
+격리된 Jev 프로필에 두 경로가 있습니다. `codex -p jev`는 Auto를 선택합니다.
+`codex -p jev -m jev/manual -c model_reasoning_effort=high`는 일반 모드의 High를 선택합니다.
+
+| 경로 | 광고된 effort | 동작 |
+| --- | --- | --- |
+| Jev Codex Router by Auto (`jev/auto`) | Auto 하나 | Jev가 모델과 effort 선택 |
+| Jev Codex Router (`jev/manual`) | low (Light), medium, high, xhigh, max | Jev가 모델 선택, 코드는 사용자 effort 유지 |
+
+일반 모드는 effort 누락 시 medium을 사용하며 잘못된 값은 inference 전에 거부합니다.
+캐시 전환·재시도·fallback에서 선택을 유지합니다. Auto의 선택 sentinel은 실행 모델에
+전달하지 않습니다. Jev 기술 오류 시 Auto는 Sol 6.1/high, 일반 모드는 Sol 6.1/선택 effort를
+사용합니다. 같은 effort를 지원하는 quota fallback이 없으면 명확한 오류를 반환합니다.
+두 경로 모두 Plan 품질·검토 지침을 유지하며 Ultra는 제외합니다. Native Desktop 메뉴의
+실제 표시는 미검증이고, 일반 Desktop은 기본 공급자와 catalog를 유지합니다.
+[릴리즈 검증 기록](docs/release/selection-modes.md)을 참고하세요.
 
 ## 이렇게 보입니다
 
@@ -167,6 +184,8 @@ Codex를 종료하고 다시 연 뒤 **Jev Codex Router**를 선택합니다. �
 
 **Jev에 기술적인 오류가 생기거나 키·작업 정보가 없으면** **GPT-6.1 Sol / high / Standard**로 실행을 이어갑니다. Sol/high 라벨만으로 정상 선택과 오류 시 대체 실행을 구분할 수는 없으며, 로컬 진단에서 확인할 수 있습니다. Kill switch, shadow mode, 모델 사용량 소진에는 [별도 처리](server/INSTALL.md)가 적용됩니다.
 
+네이티브 Plan 모드에서는 구현 가능한 계획의 품질을 우선하고, 불확실성·의존성·실패 영향·후속 수정 비용에 따라 Jev가 모델과 추론 effort를 선택합니다. 중요한 계획에는 독립 검토를, 필요한 경우 허용된 에이전트 협력을 권고합니다. 검토 안내는 위임 권한이나 검토 완료 증거를 만들지 않으며 Ultra를 자동으로 선택하지 않습니다. 승인된 계획의 단순 문구 수정은 가벼운 경로를 사용할 수 있습니다. [Plan 정책과 검증 기록](docs/release/adaptive-planning.md)을 참고하세요.
+
 **Ultra는 사용자가 직접 선택합니다.** 독립적인 작업을 병렬로 나누면 도움이 될 때 라우터가 일반 Sol 또는 Astra 모델의 Ultra를 선택하도록 권할 수 있습니다. 현재 권고 문구는 한국어입니다. 권고만으로 모드가 바뀌거나 위임이 켜지지는 않으며, 클라이언트 지원과 위임 권한이 필요합니다. Ultra는 토큰을 더 사용할 수 있습니다.
 
 ## 비용은 얼마나 줄어드나요?
@@ -191,7 +210,7 @@ Codex 구독료, 사용량 크레딧, API 환산액, TypeSafe 요금은 별개�
 
 ```mermaid
 flowchart TD
-    C[Codex Desktop] -->|Jev Codex Router 선택| R[로컬 내장 라우터]
+    C[codex -p jev 명시적 세션] --> R[로컬 내장 라우터]
     R --> J[로컬 Jev 판단 서버]
     J -->|제한된 판단 자료| T[TypeSafe 직접 API]
     T -->|모델과 effort 판단| J

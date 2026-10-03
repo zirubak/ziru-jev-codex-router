@@ -1,10 +1,24 @@
 # Operations runbook
 
 `jev_server.py` listens on `127.0.0.1:4319` and receives Responses requests for
-the `jev/auto` model from the router fork embedded at `../router`. For each turn it asks Jev for a route
+the `jev/auto` and `jev/manual` models from the router fork embedded at `../router`. For each turn it asks Jev for a route
 (tier + thinking depth), applies the routing policy, and relays the request to
 the Codex Router's local caller edge, which serves native GPT models from the
 shared ChatGPT session.
+
+## Selection modes
+
+`codex -p jev` uses Auto. For Manual, use
+`codex -p jev -m jev/manual -c model_reasoning_effort=high`.
+Auto advertises one Auto selection sentinel, which never reaches execution.
+Manual accepts low/medium/high/xhigh/max and preserves exact effort across
+cache, retries, Plan advice and fallback. Invalid values fail before inference;
+missing effort defaults to medium. Ultra and native Desktop menu acceptance
+remain outside verified support.
+
+The optional [native Desktop candidate](../docs/release/native-desktop-bridge.md)
+uses standard effort enums for both entries without patching frontend assets.
+Auto ignores this client selection. Its UI gate remains pending.
 
 ## Local authentication
 
@@ -37,7 +51,8 @@ environment.
 | Watchdog (no launchd) | `server/watchdog.sh`, e.g. cron every 5 min |
 | Router status | `bin/jev-codex-router router status` |
 | Update the monorepo | `bin/jev-codex-router update` |
-| Hide the model | `router/bin/control picker set jev/auto hide` |
+| Hide the model | `router/bin/control picker set jev/auto hide
+router/bin/control picker set jev/manual hide` |
 | Disable the provider | `bin/jev-codex-router router providers generic disable jev` |
 | Revoke native sharing | `bin/jev-codex-router router chatgpt-session disable` |
 
@@ -49,9 +64,9 @@ embedded router from a second checkout. Provider and model state live outside
 the source tree, so updates should not touch them. Verify anyway:
 
 1. `bin/jev-codex-router router providers generic list` → should show `SHOW jev`.
-2. `cat ~/.codex/codex-router/model-picker.json` → `jev/auto` under `visible`.
+2. `cat ~/.codex/codex-router/model-picker.json` → `jev/auto` and `jev/manual` under `visible`.
 3. `curl -s http://127.0.0.1:4319/health` → `{"ok": true...}`.
-4. If needed: `bin/jev-codex-router router refresh-catalog`, then restart Codex.
+4. If needed: `bin/jev-codex-router router refresh-catalog`, then start `codex -p jev`.
 
 ## Troubleshooting
 
@@ -65,38 +80,41 @@ the source tree, so updates should not touch them. Verify anyway:
   kill switch may be on, or the TypeSafe key is unreadable (look for
   `jev_error` / `no_key_or_task` gates). Jev errors or missing key/task
   use `gpt-6.1-sol` with `high` effort and standard speed.
-- **Model missing from the picker**: re-run `refresh-catalog` and
-  `picker set jev/auto show`, then fully restart Codex.
+- **Jev missing in its profile**: verify `jev.config.toml`, refresh the catalog,
+  and invoke `codex -p jev`; the normal picker remains official.
 
 ### Model visible but rejected by ChatGPT
 
-`The 'jev/auto' model is not supported when using Codex with a ChatGPT account`
-can mean the model is selected while the OpenAI provider still points directly
-at OpenAI. Listing a model in a catalog, or declaring `[model_providers.jev]`,
-does not associate an existing task with that provider.
+A model catalog entry does not select its provider. A historical thread using
+`jev/auto` with `openai` can fail the ChatGPT model allowlist even when a local
+router is running. A global OpenAI endpoint override also redirects official
+requests, including remote compaction, through the local service.
 
-1. Inspect `bin/jev-codex-router router status`: check `model_provider` and the redacted
-   `openai_base_url`, not just whether the service is running.
-2. Verify the main router has the enabled `jev` generic provider and the
-   `jev/auto` entry in `user-models.json`. A direct Codex provider declaration
-   is a separate configuration. Reload the router after restoring its routes;
-   its startup regenerates the gateway configuration from source.
-3. Preserve a user-owned `model_catalog_json`. With the built-in `openai`
-   provider, Codex supports a user-level `openai_base_url` pointing to the
-   router's authenticated loopback Responses entry. Use Codex's
-   `config/value/write` API for this setting; resolve the caller capability
-   locally from its protected file, never print it or put it in command
-   arguments. Leave other provider definitions and model defaults intact.
-4. Verify a small request through **4202 → Jev 4319 → native 4202**, then through
-   an ephemeral Codex invocation reading the saved configuration. Checking
-   Jev's health alone does not exercise the client transport.
-5. Quit and reopen Codex on the host Mac to reload the configuration before
-   retrying the existing task from desktop or mobile.
+This fork installs Jev as an explicit profile:
 
-The built-in OpenAI transport override was verified with Codex
-`0.155.0-alpha.9.2`; no switch to a different provider or catalog was needed.
-See the [official configuration documentation](https://learn.chatgpt.com/docs/config-file/config-advanced)
-for the distinction between the built-in endpoint override and custom providers.
+```sh
+codex -p jev
+```
+
+`$CODEX_HOME/config.toml` remains the normal configuration. The dedicated
+`$CODEX_HOME/jev.config.toml` selects `jev-router`, `jev/auto`, and the router
+catalog. Only that provider points to `127.0.0.1:4202/v1`; it authenticates using
+`caller-key-auth-command.mjs` reading the protected caller-secret file.
+`requires_openai_auth = false` prevents the client from applying ChatGPT model
+restrictions or forwarding its account credentials to this custom provider.
+Native session sharing remains inside the router.
+
+Installer and subsequent config repair/refresh commands honor the persistent
+`isolated-codex.json` policy. Global signed/login-free/default-model switches
+are refused. A user-owned `jev.config.toml` is never silently overwritten.
+Install rollback restores both configuration files. Keep old backup files
+untouched; restore individual safe preferences, never the former global route.
+
+To verify manually, start a fresh normal official-model chat and a separate
+`codex -p jev` session. Confirm the normal configuration has no router URL or
+router catalog, and only the explicit session adds a router decision-log row.
+The installed client's `--help` documents profile-file support; older builds
+without that support need a compatible client before Jev can be used.
 
 ## Design notes
 
@@ -117,6 +135,7 @@ To stop using Jev while keeping the shared router and other providers:
 ```sh
 bin/jev-codex-router router providers generic disable jev
 router/bin/control picker set jev/auto hide
+router/bin/control picker set jev/manual hide
 launchctl bootout "gui/$(id -u)/com.thibaultsaintjean.jev-router"
 ```
 

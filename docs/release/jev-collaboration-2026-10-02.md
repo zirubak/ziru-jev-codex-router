@@ -1,7 +1,8 @@
 # Jev collaboration routing — 2026-10-02
 
 Issue: [#8](https://github.com/zirubak/ziru-jev-codex-router/issues/8).
-Base: `631f985` on the public-source branch.
+Initial base: `631f985`; final integration base: `7ce7f32` after concurrent
+selection-mode, Desktop and quota-contract changes merged into `main`.
 
 ## Cause and behavior
 
@@ -29,10 +30,12 @@ RED and real native success establish the corrected routing boundary.
 - Original HTTP RED: unwanted model insertion and encrypted handoff HTTP 502.
 - Integrated review caught V2 compaction and external failover regressions;
   five focused failures became green after correction.
-- Final focused HTTP checks: 9 passed, including existing external handoff and
-  canonical replay coverage.
-- Public Python: 207 passed; compileall and offline routing dossier passed.
-- Embedded syntax/schema checks passed; Node: 4424 passed, 31 skipped, 0 failed.
+- Initial focused HTTP checks: 9 passed. After integration, 11 focused checks
+  passed, including all four upstream Auto/Manual and Desktop replay variants.
+- Final Python: 258 passed; compileall and offline routing dossier passed.
+- Embedded syntax/schema checks passed; Node: 4481 passed, 37 skipped, 0 failed.
+- Opt-in native Desktop contract checks: 3 passed with the installed binary and
+  unchanged official model metadata.
 - Read-only code and Python specialists approved the same final source candidate.
   Code review also approved the two-file installation overlay.
 - Native Desktop engine `0.159.0-alpha.12.1`: Auto/none, Manual/none, Auto/all each
@@ -48,9 +51,10 @@ RED and real native success establish the corrected routing boundary.
 
 ## Installed runtime and boundaries
 
-Live verification uses the existing reviewed Desktop bridge and selection-mode
-runtime overlay, which includes work outside this main-based patch. This is not
-proof that a fresh checkout of this commit contains that entire Desktop stack.
+Live verification used the existing reviewed Desktop and selection-mode runtime.
+Those features are now also in the final integration base. The installed checkout
+still contains pre-existing local instrumentation, so its complete state is
+identified separately from the distribution commit.
 Only `router.mjs` and `namespace-relay.mjs` were updated in the installed runtime.
 All other source files, Codex configs and the native app binary matched their
 pre-install hashes. The root `./install.sh --desktop` transaction passed, its
@@ -70,13 +74,12 @@ context. Do not claim child-specific semantic selection from execution success.
 | File | SHA-256 |
 | --- | --- |
 | `router/src/namespace-relay.mjs` | `e21f4bbfc15f0c91b8b56bb4a951f1ca5f2f81ae58bff294cae7a0747547a7b1` |
-| `router/src/router.mjs` | `5f3c3d13c77aa739a0c25364633ad72c1783d0b444823fa1f7aa3be8f79ed14e` |
-| `router/test/routing.test.mjs` | `359ec7d82bbddb65db9aa759e6a18e72d230b967b4988c9578ffa829d19f2939` |
+| `router/src/router.mjs` | `354b1e2fad98337ee5666301b26ecdfabfa8c67b338389356ab0d31ec57604fa` |
+| `router/test/routing.test.mjs` | `27adfe27ccdafd9c997c627f30cdc92daa954eb6f8c76ff076cebf32ebffb716` |
 | Installed `router/src/router.mjs` | `a002ea2dc0873b019862003735f1dc616d8b020b5658f634e438f18d3fca4366` |
 
 The installed namespace file matches the public candidate. The installed router
-retains the previous runtime overlay; the new behavior matches the reviewed
-public patch, with a comment line-wrap difference.
+matches the final distribution router except for a comment line-wrap difference.
 
 No durable learning: the corrected boundaries are recoverable from the source,
 regression tests and this release evidence.

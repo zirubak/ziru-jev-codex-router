@@ -57,12 +57,14 @@ function residualTreeProgram(pidFile, marker, exitCode = 0) {
   ].join(";");
   return [
     "const { spawn } = require('node:child_process')",
-    "const { writeFileSync } = require('node:fs')",
+    "const { writeFileSync, renameSync } = require('node:fs')",
     // The descendant deliberately inherits the leader's stdout/stderr pipes.
     // Node emits `exit` for the leader while `close` remains blocked on those
     // inherited descriptors, which is the ordering this regression exercises.
     `const child = spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] })`,
-    `child.once('message', () => { writeFileSync(${JSON.stringify(pidFile)}, String(child.pid)); process.stdout.write('leader-out'); process.stderr.write('leader-err'); process.exit(${exitCode}); })`,
+    // Existence is the parent's readiness signal, so publish the complete PID
+    // atomically instead of exposing the empty file created before its write.
+    `child.once('message', () => { writeFileSync(${JSON.stringify(`${pidFile}.tmp`)}, String(child.pid)); renameSync(${JSON.stringify(`${pidFile}.tmp`)}, ${JSON.stringify(pidFile)}); process.stdout.write('leader-out'); process.stderr.write('leader-err'); process.exit(${exitCode}); })`,
     "setInterval(() => {}, 1000)",
   ].join(";");
 }

@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { planDesktopLaunch } from '../src/desktop-launch.mjs';
+
+const manifest = {
+  version: 1, nativeBinary: '/app/codex', appExecutable: '/app/ChatGPT',
+  appAsar: '/app/app.asar', bridgeBinary: '/router/jev-desktop-codex',
+  expectedAppSha256: 'a'.repeat(64), expectedNativeSha256: 'b'.repeat(64),
+};
+const observed = { appSha256: 'a'.repeat(64), nativeSha256: 'b'.repeat(64) };
+const originalEnv = { HOME: '/home', CODEX_HOME: '/home/.codex', PATH: '/bin',
+  CODEX_CLI_PATH: '/old', CODEX_APP_SERVER_USE_LOCAL_DAEMON: '1' };
+
+test('compatible app selects launch-scoped bridge without changing normal home', () => {
+  const result = planDesktopLaunch(manifest, '/private/manifest.json', originalEnv, observed);
+  assert.equal(result.env.CODEX_CLI_PATH, manifest.bridgeBinary);
+  assert.equal(result.env.JEV_DESKTOP_CONFIG, '/private/manifest.json');
+  assert.equal(result.env.HOME, originalEnv.HOME);
+  assert.equal(result.env.CODEX_HOME, originalEnv.CODEX_HOME);
+  assert.equal(result.env.CODEX_APP_SERVER_USE_LOCAL_DAEMON, undefined);
+  assert.equal(result.mode, 'jev');
+  assert.equal(originalEnv.CODEX_CLI_PATH, '/old');
+  assert.deepEqual(result.args, []);
+});
+
+test('app or native binary update disables bridge and preserves ordinary launch', () => {
+  for (const changed of [{ appSha256: 'c'.repeat(64) }, { nativeSha256: 'c'.repeat(64) }]) {
+    const result = planDesktopLaunch(manifest, '/private/manifest.json', originalEnv, { ...observed, ...changed });
+    assert.equal(result.mode, 'native');
+    assert.equal(result.env.CODEX_CLI_PATH, undefined);
+    assert.equal(result.env.JEV_DESKTOP_CONFIG, undefined);
+    assert.equal(result.executable, manifest.appExecutable);
+    assert.match(result.warning, /updated/);
+  }
+});
+
+test('invalid manifest does not launch any command', () => {
+  assert.throws(() => planDesktopLaunch({ ...manifest, version: 2 }, '/p', {}, observed), /manifest/);
+  assert.throws(() => planDesktopLaunch({ ...manifest, appExecutable: 'relative' }, '/p', {}, observed), /absolute/);
+});

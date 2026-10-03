@@ -1,0 +1,50 @@
+"""Exact user controls are enforced locally, independently of Jev judgments."""
+from dataclasses import dataclass
+
+MANUAL_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+AUTO_ROUTES = frozenset({"auto", "jev-auto", "jev/auto"})
+MANUAL_ROUTES = frozenset({"manual", "jev-manual", "jev/manual"})
+SELECTION_POLICY_VERSION = "split-v18-selection-modes"
+
+
+@dataclass(frozen=True)
+class Selection:
+    mode: str
+    user_effort: str | None = None
+
+    def state(self) -> dict:
+        result = {"selection_mode": self.mode}
+        if self.user_effort is not None:
+            result["user_effort"] = self.user_effort
+        return result
+
+
+def resolve_selection(payload: dict) -> Selection:
+    """Validate explicit effort before either inference or model execution."""
+    route = payload.get("model", "auto")
+    if isinstance(route, str) and route in AUTO_ROUTES:
+        return Selection("auto")
+    if not isinstance(route, str) or route not in MANUAL_ROUTES:
+        raise ValueError("unknown Jev selection route")
+    reasoning = payload.get("reasoning")
+    if reasoning is not None and not isinstance(reasoning, dict):
+        raise ValueError("manual reasoning must be an object")
+    effort = reasoning.get("effort", "medium") if isinstance(reasoning, dict) else "medium"
+    if not isinstance(effort, str) or effort not in MANUAL_EFFORTS:
+        raise ValueError("manual effort must be low, medium, high, xhigh or max")
+    return Selection("manual", effort)
+
+
+def selection_scope(payload: dict) -> str:
+    selection = resolve_selection(payload)
+    return f"{selection.mode}:{selection.user_effort or ''}"
+
+
+def normalized_updates(items: list, effort: str) -> list:
+    """Configuration updates cannot silently override an explicit effort."""
+    return [
+        {**item, "reasoning": {**(item.get("reasoning") or {}), "effort": effort}}
+        if isinstance(item, dict) and item.get("type") == "configuration_update"
+        and isinstance(item.get("reasoning", {}), dict) else item
+        for item in items
+    ]
