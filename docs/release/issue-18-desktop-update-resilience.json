@@ -1,0 +1,114 @@
+{
+  "issue": 18,
+  "status": "VERIFIED_CANDIDATE",
+  "date": "2026-10-03",
+  "root_cause": [
+    "Updater relaunch lacks the process-only Jev adapter environment",
+    "Persisted Jev provider identifiers have no standalone recovery definition",
+    "Exact artifact allowlist rejects newly updated signed applications"
+  ],
+  "design": [
+    "Owned GUI environment wrapper and RunAtLoad registration",
+    "Canonical home and stdio app-server scope",
+    "Signed artifact and real native protocol qualification with private receipts",
+    "Recovery-only named providers and authenticated ingress guard"
+  ],
+  "limits": [
+    "No real Sparkle update-cycle test",
+    "No app restart or signed-in UI acceptance performed",
+    "Future incompatible application contracts are refused explicitly",
+    "Remote Actions disabled by owner policy"
+  ],
+  "candidate": {
+    "base": "64a9d0bb5092e557913772b59d7cba9b58f3e1cb",
+    "files": {
+      "README.md": "99a2242e0785e58e9a08d90aeb90db03b1551698725f115e19766220f18b84bb",
+      "docs/release/issue-16-desktop-preflight-verification.json": "84d5c031b47c81c9c6eee9bcbacf3d08a8ae5de1a5fb1ece5fc5de7c628d47e7",
+      "docs/release/native-desktop-bridge.md": "a8976108aa326bd656890ffa76b1562941eb622ba4cba6868f70b40edd9eee9a",
+      "install.sh": "560bc7c2085672d972c8fc214d06a47c7794454d0f85567794d153fb551b30bc",
+      "router/bin/jev-desktop-codex": "69874a6327074a4559d57d6e35c947216ecfddbd0b349c373ff7d095e4afc1f7",
+      "router/src/desktop-compatibility.mjs": "88de3c86c744f6b53a1318775a0554f074f39dd8dc7eab11be68eae20dd5fa38",
+      "router/src/desktop-contract-probe.mjs": "b5fd96a06ad24348128c1db6fda5896d4186f957178252a3c5f8c5e2c0a285cb",
+      "router/src/desktop-launch.mjs": "c41221287146a91e5cd12a3337ac87053a09d1e9fb0acab66939fa0231a7d1de",
+      "router/src/desktop-provider-bridge.mjs": "6754d9a81e38f3fc327117eb5c0985bdcc233026dbf102b42e8276e77a639c0c",
+      "router/src/desktop-runtime.mjs": "2d768a760094fe90828be00a7ac0169c5bd633dcda929b5f77802714355a07f7",
+      "router/src/router.mjs": "1409db12838ff6ed1c490b3efcd672017b2c56eca80a2005eceec63021fd8e1f",
+      "router/test/desktop-compatibility.test.mjs": "b1d9b1d48b087c98598ab8023d62bd4ff38e9f227d166343240781ed105996e9",
+      "router/test/desktop-contract-probe.test.mjs": "ed2cb3895c5824a44f2fd72704f003e57f2809b15b4558caa4b6d3da9a8b2bb3",
+      "router/test/desktop-launch.test.mjs": "bd02ebdab2c9543b217e522ce09f1b7acc8d7c9efdc77ce0f5225e7bd88b38dc",
+      "router/test/desktop-provider-bridge.test.mjs": "f6448ded3380e54ac73b69216b2203a1e23c2e2a757aa6f591463e911d7953b0",
+      "router/test/desktop-provider-native.test.mjs": "883cf89c7fe191ef8b541b1fa9bedfb32a6456c5ae9002e77ccc794a7dfaa01e",
+      "router/test/desktop-runtime.test.mjs": "e91cb64386e73ca6b006b10cca50b05a18eef06fda46d2def38efd0354eb4bba",
+      "router/test/fetch-transport.test.mjs": "8a7f812e7d7babf88c3f1a6d86314d37449ec9370c54ebbd3ecefd5695af1984",
+      "router/test/routing.test.mjs": "db8f0ed6838e4946eec099617a9696a99e4801b5806fafa1c304f98cf6bdf2a7",
+      "server/INSTALL.md": "f1bcdf1135232a85f8af1d9dcd5eaa5e53951441ca199855429eb79cc84c1aab",
+      "server/desktop_provider_registry.py": "2e53560697cdb67f8ed68607ef243d84246d7abba9433d84bfb8a3be54c94bf8",
+      "server/desktop_session.py": "7c299750e1d05119e28749d39c38d7722b5a9f9b9eedace7cfdc845458d0631f",
+      "server/install_desktop.py": "804709f140d48188d2b48a3cf8a0d6099e3ec1004a183ac0eb152580090cd582",
+      "server/install_transaction.py": "2a9c3a7bf1c2cab1b52b85fa5bc25abee7dbb2b216ae24d048d4735242e2bebf",
+      "server/test_desktop_provider_registry.py": "cf8692a3098c26fb5fd3713e3446f95e88edf43bb7ac80af9f731831225bf1bf",
+      "server/test_desktop_session.py": "a5c93323da4a2c0e006a22837e5be1748e3c328f2ea4c567a604a29575b589be",
+      "server/test_install_desktop.py": "fe9bcf3c5d40c03f7d8b94d09dd03cb8f0aa3a4dcd0eee2e16e12c5af8687c42",
+      "server/test_install_transaction.py": "124cb989d1dec02e70f5878252b3167e0b1a53cde0a9f81fad28c6673854b2b9"
+    }
+  },
+  "checks": {
+    "python_full": {
+      "passed": 282,
+      "skipped": 1,
+      "failed": 0
+    },
+    "actual_signed_app_installer": {
+      "passed": 8,
+      "skipped": 0,
+      "failed": 0
+    },
+    "node_full": {
+      "passed": 4515,
+      "skipped": 38,
+      "failed": 0
+    },
+    "node_syntax": "PASS",
+    "python_compileall": "PASS",
+    "shell_syntax": "PASS",
+    "python_ruff": "PASS, 8 changed Python files",
+    "offline_dossiers": "16 PASS",
+    "whitespace": "PASS",
+    "native_regression": "3 PASS",
+    "compatibility_and_runtime": "26 PASS",
+    "native_production_contract": {
+      "nativeVersion": "codex-cli 0.160.0",
+      "checks": 14,
+      "httpRequests": 8,
+      "compactions": 0,
+      "minimumContextWindow": 828400,
+      "recoveryDeniedRequests": 12,
+      "recoveryCompactionAttempts": 2,
+      "recoveryCompactRequests": 0,
+      "recoveryModelOutputs": 0,
+      "elapsedMs": 12954
+    },
+    "native_probe_suite": "8 PASS; final 18-second budget delta rechecked with 6 fast tests and real native probe",
+    "isolation": "macOS outbound TEST-NET connection EPERM; owned SIGTERM-resistant descendant terminated and fixture removed",
+    "cold_wrapper_startup": {
+      "elapsedMs": 15475,
+      "deadlineMs": 30000,
+      "policy_and_config_responses": true,
+      "jev_aliases_observed": true,
+      "cache_miss_qualification": true
+    },
+    "python_review": "APPROVE; scope hash 18fb594da6e7b038fe3a0b2cff567332028834646cb38cf29284cc6844ba1f72",
+    "code_review": "APPROVE; 28-file manifest sha256 968a343ef6b94fdc6e03d95d968cf9bad2e8f9267a6ee924c50554099d24891a"
+  },
+  "regressions": [
+    "Missing recovery guard: actual local HTTP200 observed before correction",
+    "Signed changed artifact wrongly chose native launch before correction",
+    "Native deep-merged required recovery marker into active bridge before explicit override",
+    "Whitespace-only foreign environment value was overwritten before correction",
+    "Concurrent own activation and inconsistent rollback snapshot reproduced before correction",
+    "Corrupt private receipt blocked recovery before cache-miss requalification",
+    "Receive-only fixture classification corrected; long-lived outbound transport checks retained"
+  ],
+  "deployment": "Not installed at candidate verification; see issue18 for deployment readback.",
+  "learning": "No durable learning; reusable mechanisms and boundaries are recorded in code, tests and existing documentation."
+}

@@ -1,51 +1,31 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { readFileSync, lstatSync, realpathSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import os from 'node:os';
+import path from 'node:path';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
+import { qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { isStdioAppServer, readDesktopManifest } from '../src/desktop-runtime.mjs';
 
-const bundledNative = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex';
+const bundledNative = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex';
+const args = process.argv.slice(2);
 let nativeBinary = bundledNative;
 let provider;
 let state;
-try {
-  const file = process.env.JEV_DESKTOP_CONFIG;
-  if (!file || !isAbsolute(file)) throw new Error('Missing private bridge manifest');
-  const stat = lstatSync(file);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid?.() || (stat.mode & 0o077)) {
-    throw new Error('Unsafe manifest permissions');
+if (isStdioAppServer(args)) {
+  try {
+    const file = process.env.JEV_DESKTOP_CONFIG;
+    const manifest = readDesktopManifest(file, process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex'));
+    nativeBinary = manifest.nativeBinary;
+    // The updater can respawn this executable without running our app launcher.
+    await qualifyDesktop({ app: manifest.app, cacheDirectory: path.join(path.dirname(file), 'qualifications') });
+    state = new PrivateRouteState(manifest.routeStateDirectory);
+    provider = manifest.provider;
+  } catch {
+    process.stderr.write('Jev Desktop could not verify compatibility. Existing chats remain readable; Jev requests require reconnection through Jev Codex.command.\n');
   }
-  const manifest = JSON.parse(readFileSync(file, 'utf8'));
-  if (manifest.version !== 1 || !isAbsolute(manifest.nativeBinary)
-      || realpathSync(manifest.nativeBinary) === realpathSync(fileURLToPath(import.meta.url))) {
-    throw new Error('Invalid native executable');
-  }
-  // Never accept a network destination from the Desktop model list or RPCs.
-  if (!['http://127.0.0.1:4202/v1', 'http://localhost:4202/v1'].includes(manifest.provider?.base_url)
-      || manifest.provider?.wire_api !== 'responses' || manifest.provider?.requires_openai_auth !== false) {
-    throw new Error('Invalid isolated Jev provider');
-  }
-  nativeBinary = manifest.nativeBinary;
-  // Updater helpers can retain the launch environment and respawn this adapter.
-  // Recheck both identities here, not just when the application was launched.
-  if (!isAbsolute(manifest.appAsar ?? '')
-      || !/^[a-f0-9]{64}$/.test(manifest.expectedAppSha256 ?? '')
-      || !/^[a-f0-9]{64}$/.test(manifest.expectedNativeSha256 ?? '')
-      || createHash('sha256').update(readFileSync(manifest.appAsar)).digest('hex') !== manifest.expectedAppSha256
-      || createHash('sha256').update(readFileSync(nativeBinary)).digest('hex') !== manifest.expectedNativeSha256) {
-    throw new Error('Application update requires bridge revalidation');
-  }
-  if (!isAbsolute(manifest.routeStateDirectory ?? '')) throw new Error('Route state directory requires reinstall');
-  state = new PrivateRouteState(manifest.routeStateDirectory);
-  provider = manifest.provider;
-} catch {
-  process.stderr.write('Jev Desktop integration unavailable; reinstall or revalidate the integration. Using unmodified native Codex.\n');
 }
-const args = process.argv.slice(2);
-const adapted = provider && args.includes('app-server') && !args.includes('--help');
+const adapted = Boolean(provider);
 const env = { ...process.env };
 delete env.CODEX_CLI_PATH;
 delete env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;

@@ -9666,12 +9666,24 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
   try {
     if (forwarder) await waitFor(`http://127.0.0.1:${forwarderPort}/health`, forwarder, { Authorization: `Bearer ${INTERNAL_KEY}` });
     await waitFor(`${routerBase(routerPort)}/models`, router);
+    if (desktop) {
+      for (const endpoint of ["responses", "responses/compact"]) {
+        const recovery = await fetch(`${routerBase(routerPort)}/${endpoint}`, {
+          method: "POST", headers: { "Content-Type": "application/json",
+            "x-jev-desktop-recovery": "required", "x-jev-selection-mode": mode },
+          body: JSON.stringify({ model: "gpt-6.1-sol", stream: false, input: [] }),
+        });
+        assert.equal(recovery.status, 400, "A native-only resume must not silently execute its sticky Jev provider");
+        assert.equal((await recovery.json()).error.code, "jev_desktop_recovery_required");
+      }
+      assert.equal(gatewayBodies.length, 0, "Recovery-only requests must not reach any upstream");
+    }
     const response = await fetch(`${routerBase(routerPort)}/responses`, {
       method: "POST",
       headers: {
         Authorization: "Bearer CODEX_CALLER_SECRET",
         "Content-Type": "application/json",
-        ...(desktop ? { "x-jev-selection-mode": mode, "x-openai-internal-codex-responses-lite": "true" } : {}),
+        ...(desktop ? { "x-jev-selection-mode": mode, "x-jev-desktop-recovery": "bridge-active", "x-openai-internal-codex-responses-lite": "true" } : {}),
       },
       body: JSON.stringify({
         model: desktop ? "gpt-6.1-sol" : `jev/${mode}`,
@@ -9686,6 +9698,7 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
     if (desktop) {
       assert.equal(gatewayHeaders[0]["x-openai-internal-codex-responses-lite"], "true");
       assert.equal(gatewayHeaders[0]["x-jev-selection-mode"], undefined);
+      assert.equal(gatewayHeaders[0]["x-jev-desktop-recovery"], undefined);
       assert.equal(gatewayHeaders[0].authorization, undefined);
     }
     assert.equal(gatewayBodies[0].prompt_cache_key, promptCacheKey);

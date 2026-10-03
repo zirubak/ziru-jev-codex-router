@@ -86,7 +86,7 @@ test('new Jev thread gets only thread-scoped provider config', async () => {
   const { bridge, calls } = fixture();
   const result = await bridge.handle('thread/start', { model: 'jev/manual', config: { user_setting: true } });
   assert.equal(result.modelProvider, 'jev-router-manual');
-  assert.deepEqual(calls.find((call) => call.method === 'thread/start').params.config, { user_setting: true, model_reasoning_effort: 'medium', model_context_window: 872000, model_auto_compact_token_limit: 740000, model_providers: { 'jev-router-manual': { ...provider, http_headers: { 'x-jev-selection-mode': 'manual' } } } });
+  assert.deepEqual(calls.find((call) => call.method === 'thread/start').params.config, { user_setting: true, model_reasoning_effort: 'medium', model_context_window: 872000, model_auto_compact_token_limit: 740000, model_providers: { 'jev-router-manual': { ...provider, http_headers: { 'x-jev-selection-mode': 'manual', 'x-jev-desktop-recovery': 'bridge-active' } } } });
 });
 
 test('Jev model default writes never reach native disk and keep expectedVersion validation', async () => {

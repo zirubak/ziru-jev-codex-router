@@ -30,7 +30,7 @@ Install Jev Codex Router from the embedded router fork.
 
   --prepare-only  Install the embedded router's dependencies without changing
                   Codex configuration, services, credentials, or local state.
-  --desktop       Also prepare the optional Desktop launcher; never start the app.
+  --desktop       Register the persistent Desktop bridge; never start the app.
   -h, --help      Show this help.
 
 The full install preserves any configured router providers, adds or updates the
@@ -50,6 +50,8 @@ case ${1:-} in
   *) usage >&2; exit 2 ;;
 esac
 [ "$#" -le 1 ] || { usage >&2; exit 2; }
+JEV_INSTALL_DESKTOP=$desktop
+export JEV_INSTALL_DESKTOP
 
 [ -x "$router_cli" ] || {
   echo "Embedded router is missing at $router_cli." >&2

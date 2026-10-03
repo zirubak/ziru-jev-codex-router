@@ -39,6 +39,12 @@ class InstallTransactionTests(unittest.TestCase):
         if transaction.exists():
             shutil.copy2(transaction, self.repo / "server/install_transaction.py")
         (self.repo / "server/install_preflight.py").write_text("# Preflight has its own isolated tests.\n")
+        (self.repo / "server/desktop_session.py").write_text(
+            'LABEL="io.github.jev-desktop-bridge"\n'
+            'def snapshot(home, state):\n'
+            ' return {"environment":"", "service_present":False, "service_running":False}\n'
+            'def prepare_restore(previous, home, original): pass\n'
+            'def finish_restore(previous, home, original): pass\n')
         self.commands = self.base / "commands"
         self.commands.mkdir()
         self.env = {**os.environ, "HOME": str(self.home),
@@ -353,6 +359,8 @@ if sys.argv[1:3]==['service','restart']:
     def test_isolation_rejects_default_router_model_and_nested_openai_url(self) -> None:
         self.assertEqual(self.run_install().returncode, 0)
         for text in ['model = "jev/auto"\n',
+                     'model_provider = "jev-router-auto"\n',
+                     'model_provider = "jev-router-manual"\n',
                      '[model_providers.openai]\nbase_url = "http://localhost:4202/v1"\n']:
             with self.subTest(config=text):
                 self.config.write_text(text)
@@ -365,6 +373,31 @@ if sys.argv[1:3]==['service','restart']:
             '[model_providers.jev-router]\nrequires_openai_auth=false\n')
         with mock.patch.dict(os.environ, self.env), self.assertRaises(ValueError):
             transaction.validate_isolation()
+
+    def test_desktop_transaction_restores_session_around_state_replacement(self) -> None:
+        saved = {"environment": "", "service_present": False, "service_running": False}
+        events = []
+        marker = self.state / "candidate-state"
+
+        def prepare(*args: object) -> None:
+            self.assertTrue(marker.exists())
+            events.append("stopped")
+
+        def finish(*args: object) -> None:
+            self.assertFalse(marker.exists())
+            events.append("restored")
+
+        with mock.patch.dict(os.environ, {**self.env, "JEV_INSTALL_DESKTOP": "1"}), \
+                mock.patch.object(transaction.sys, "platform", "darwin"), \
+                mock.patch.object(transaction.desktop_session, "snapshot", return_value=saved), \
+                mock.patch.object(transaction.desktop_session, "prepare_restore", side_effect=prepare), \
+                mock.patch.object(transaction.desktop_session, "finish_restore", side_effect=finish):
+            backup = transaction.begin()
+            marker.write_text("new candidate")
+            transaction.restore(backup)
+        self.assertEqual(events, ["stopped", "restored"])
+        manifest = json.loads((backup / "manifest.json").read_text())
+        self.assertEqual(manifest["desktop_session"], saved)
 
     def stage_service_backup(self):
         for label in transaction.LABELS:

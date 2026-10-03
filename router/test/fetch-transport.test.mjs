@@ -321,6 +321,13 @@ test("every long-lived server process installs the stable transport", () => {
 
   for (const name of serverEntryPoints) {
     const source = readFileSync(path.join(SRC_DIR, name), "utf8");
+    if (name === "desktop-contract-probe.mjs") {
+      // This bounded receive-only fixture has no outbound JS transport. It
+      // must not mutate the caller's global dispatcher merely to accept HTTP.
+      assert.doesNotMatch(source, /\bfetch\s*\(|\b(?:http|https)\.(?:request|get)\s*\(|from\s+['"](?:undici|node:https)['"]/);
+      assert.match(source, /import\s+\{\s*createServer\s*\}\s+from\s+['"]node:http['"]/);
+      continue;
+    }
     // A process may pass options (the Grok forwarder raises its body idle
     // bound), but it must still install the transport.
     assert.match(
