@@ -1233,8 +1233,13 @@ SIGNATURE_RX = re.compile(
     r"(?:\s+·\s+(?:low|medium|high|xhigh|max))?\s*$")
 ULTRA_HEADER_RX = re.compile(
     r"\A(?:" + "|".join(
-        re.escape(ultra_recommendation(model, reason))
+        re.escape(header)
         for model in (SOL_61, ASTRA) for reason in ULTRA_REASONS
+        for header in (
+            ultra_recommendation(model, reason),
+            re.sub(r"\A\[Jev Ultra 추천: [^\]]+\]", "[Jev Ultra 추천]",
+                   ultra_recommendation(model, reason)),
+        )
     ) + r")"
 )
 
