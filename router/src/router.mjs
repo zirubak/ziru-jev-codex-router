@@ -1047,7 +1047,7 @@ function routedSearchCompatibility(payload, route) {
 // canonical replay: aging or windowing it here would make the Jev projection
 // accidentally become the only context available to the executing model.
 function requiresCanonicalReplay(route) {
-  return route?.slug === "jev/auto";
+  return route?.slug === "jev/auto" || route?.slug === "jev/manual";
 }
 
 function inputHasWebSearchHistory(input) {
@@ -2036,9 +2036,12 @@ async function relayEncryptedAgentPayload(request, item, encrypted, signal) {
   return waitForAgentPayloadRelay(operation, signal);
 }
 
-async function normalizeRoutedAgentInput(request, input, signal) {
+async function normalizeRoutedAgentInput(request, input, signal, route) {
+  // Jev selects a native executor; that executor owns decryption. Sending its
+  // sealed handoff through a separate plaintext relay both loses canonical
+  // context and can reject a task before the decision server receives it.
   const normalized = normalizeRoutedInput(input);
-  if (!Array.isArray(normalized)) return normalized;
+  if (!Array.isArray(normalized) || requiresCanonicalReplay(route)) return normalized;
   const output = [];
   for (const item of normalized) {
     const payload = encryptedAgentPayload(item);
@@ -2865,8 +2868,9 @@ async function summarizeWith(
   signal,
   { searchContract } = {},
 ) {
+  const destinationInput = await normalizeRoutedAgentInput(request, aged.input, signal, route);
   const compatibleInput = zenFreeCompatibleInput(
-    normalizeProviderAppToolOutputs(aged.input),
+    normalizeProviderAppToolOutputs(destinationInput),
     route,
   );
   const providerInput = (needsConsoleGoResponsesToolCompatibility(route) || usesDeepSeekResponses(route))
@@ -2961,7 +2965,7 @@ async function summarize(request, payload, route, signal, { allowFailover = true
   // inside a `/goal` or subagent session summarizes opaque payloads. The relay
   // is cached by ciphertext, so a conversation whose turns already resolved
   // costs nothing extra here.
-  const normalized = await normalizeRoutedAgentInput(request, originalInput, signal);
+  const normalized = await normalizeRoutedAgentInput(request, originalInput, signal, route);
   const searchContract = routedSearchContract(searchSnapshot, normalized);
   // Evidence is extracted before tool-result aging rewrites old output bytes.
   // The summarizer may select source IDs, but only this deterministic pass can
@@ -3823,8 +3827,9 @@ async function buildRoutedRequest({ request, payload, route, agedInput }) {
   };
 }
 
-// Normalize once and age from that pristine input for every route that may
-// actually serve the turn. Ordinary turns compact only consumed old results;
+// Preserve the source input and normalize for each destination before aging.
+// Jev keeps sealed native handoffs; an external failover needs their plaintext.
+// Ordinary turns compact only consumed old results;
 // the client owns context-pressure detection and whole-history compaction.
 async function prepareRoutedRequest({
   request,
@@ -3833,9 +3838,11 @@ async function prepareRoutedRequest({
   normalizedInput,
   agingEnabled,
   canonicalReplay = false,
+  signal,
 }) {
   canonicalReplay = canonicalReplay || requiresCanonicalReplay(route);
-  const aged = ageToolResults(normalizedInput, {
+  const destinationInput = await normalizeRoutedAgentInput(request, normalizedInput, signal, route);
+  const aged = ageToolResults(destinationInput, {
     enabled: agingEnabled && !canonicalReplay,
   });
   // A routed turn leaves here as a full conversation replay, so the already
@@ -4017,6 +4024,7 @@ async function attemptModelFailover({
         normalizedInput,
         agingEnabled,
         canonicalReplay,
+        signal,
       });
       if (!routedRequestFits(model, built.body)) {
         logFailover(route, model, verdict.reason, status, "context-too-small");
@@ -4355,6 +4363,7 @@ async function handleResponses(request, response, requestUrl) {
         request,
         payload.input,
         controller.signal,
+        route,
       );
       searchContract = routedSearchContract(searchSnapshot, normalizedInput);
       agingEnabled = toolResultAgingEnabled();
@@ -4365,6 +4374,7 @@ async function handleResponses(request, response, requestUrl) {
         normalizedInput,
         agingEnabled,
         canonicalReplay,
+        signal: controller.signal,
       });
       toolResultAging = built.toolResultAging;
       conversationWindow = built.conversationWindow;
@@ -4405,6 +4415,7 @@ async function handleResponses(request, response, requestUrl) {
               normalizedInput,
               agingEnabled,
               canonicalReplay,
+              signal: controller.signal,
             });
           } catch (error) {
             const compatibilityCode = candidateBuildCompatibilityCode(error);

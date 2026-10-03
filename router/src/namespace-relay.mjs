@@ -657,6 +657,15 @@ export function injectSessionModelForSpawnCalls(item, model, effortForModel) {
     return item;
   }
   if (typeof args !== "object" || args === null || Array.isArray(args)) return item;
+  // Jev's public alias is not a native collaboration model. The child must
+  // inherit the parent's carrier and scoped provider, including on full forks.
+  if (isSubagentSpawnCall(item) && (model === "jev/auto" || model === "jev/manual")) {
+    if (args.model === undefined || args.model === null || args.model === "") return item;
+    if (args.model === model) {
+      const { model: _alias, ...inherited } = args;
+      return { ...item, arguments: JSON.stringify(inherited) };
+    }
+  }
   if (args.model !== undefined && !isSubagentSpawnCall(item)) return item;
   if (args.target?.type === "chatgptWorkCloud") return item;
   if (typeof args.model === "string" && args.model) {
