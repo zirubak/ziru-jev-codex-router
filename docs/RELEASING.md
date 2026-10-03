@@ -87,3 +87,10 @@ or create credentials automatically.
 - [v0.1.0-preview.1 notes](release/v0.1.0-preview.1.md) — first private macOS
   preview, source `cf7c6c0b2ced07aa40b8c39f777c9dec8b9a18f2`.
   [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.1).
+
+## Prepared previews
+
+- [v0.1.0-preview.2 notes](release/v0.1.0-preview.2.md) — private release draft,
+  behavior source `25a72623c27ff8019a3b0eda8434865fff3e1b01`.
+  [Verified candidate record](release/v0.1.0-preview.2-verification.json).
+  Draft preparation does not certify full live installation of the latest source.

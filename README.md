@@ -1,5 +1,7 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
+Prepared next preview: [v0.1.0-preview.2 changes and limits](docs/release/v0.1.0-preview.2.md). This is a release draft, not a publication or live-install claim.
+
 # ZIRU Jev Codex Router
 
 **Let Codex choose the model and thinking effort for each stage of your work.**

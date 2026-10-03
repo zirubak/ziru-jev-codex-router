@@ -1,0 +1,54 @@
+{
+  "status": "DRAFT_PREPARED_NOT_PUBLISHED",
+  "date": "2026-10-02",
+  "timezone": "America/Los_Angeles",
+  "tag": "v0.1.0-preview.2",
+  "previous_tag": "v0.1.0-preview.1",
+  "behavior_commit": "25a72623c27ff8019a3b0eda8434865fff3e1b01",
+  "scope": "Release documentation only; no runtime/version-contract changes",
+  "inputs": {
+    "verified_identical_tracked_files": 1362,
+    "sha256_format": "sorted repository-relative path + colon + file SHA256 + newline",
+    "aggregate_sha256": "f5ac434877bf11070da405c3e2cfd708a56fadd489c7e0d49a84e7f1fc87bc7d"
+  },
+  "reused_checks": {
+    "python_passed": 261,
+    "installer_transactions_passed": 22,
+    "node_passed": 4481,
+    "node_skipped": 37,
+    "node_failed": 0,
+    "native_contract_passed": 3,
+    "source_comparison": "All scoped inputs equal issue-2 candidate 5954679; router unchanged from collaboration merge 7eaa91c",
+    "logs": "Issue-2 and collaboration private receipts verified against stored SHA256; raw logs excluded"
+  },
+  "reviews": {
+    "behavior": "Existing integrated code/Python APPROVE on identical candidate hashes",
+    "release_documents": "Local content, linked evidence, compatibility, privacy and whitespace review"
+  },
+  "fresh_checks": {
+    "compileall": "PASS",
+    "offline_dossiers": 16,
+    "shell_syntax": "PASS",
+    "production_dependency_audit": "PASS: zero vulnerabilities",
+    "release_links_json_whitespace": "PASS",
+    "staged_secret_scan": "PASS"
+  },
+  "actions_enabled": false,
+  "remote_ci": "NOT RUN",
+  "live_install": "NOT RUN during release preparation",
+  "live_smoke": "Prior reviewed collaboration runtime only; not exact newest release source",
+  "publication_gaps": [
+    "Full live fresh installation/update of exact release source unperformed",
+    "UI screenshot-to-item labeling correlation unverified",
+    "Actual official Ultra inference/delegation unverified",
+    "Linux/Windows full product unsupported"
+  ],
+  "learning": "No durable learning",
+  "verified_log_sha256": {
+    "python_261": "3209557320d8f10f4e2b22b6c1ae8bd65cb4af6d120823a7ecb5d1b0f9a4f093",
+    "node_4481": "257a555b47b84fc98b9c781595e946d88007c06691a9eed67d7ce7f023c3c389",
+    "node_check": "c7307dc9ce6cbcf658ff5535b396c6dbd5fc73c2b50bc7675f49079529ca2f34",
+    "native_3": "af1ed67e66c47d64cb176c07f75656bc4c715c391e67e1e12ad2f81e40cde02e"
+  },
+  "release_notes_sha256": "7ec0afeaccc4e6579306f3ddadd613d5c9e286e3b931f8cf6821014870a4aec0"
+}
