@@ -111,29 +111,36 @@ node "$router_dir/src/discovery-mode.mjs" set enabled
 node "$router_dir/src/catalog.mjs" --refresh-native --bundled-native
 python3 "$transaction" validate
 
+configure_jev() {
+  if "$router_cli" providers generic show jev --json >/dev/null 2>&1; then
+    "$router_cli" providers generic edit jev \
+      --name "Jev Router" \
+      --base-url http://127.0.0.1:4319/v1 \
+      --adapter openai-responses \
+      --allow-private
+  else
+    "$router_cli" providers generic add jev \
+      --name "Jev Router" \
+      --base-url http://127.0.0.1:4319/v1 \
+      --adapter openai-responses \
+      --allow-private
+  fi
+  "$router_cli" providers generic enable jev
+
+  node "$repo_dir/server/configure-model.mjs"
+  node "$repo_dir/server/configure-auth.mjs"
+}
+
 if [ -f "$state_dir/enabled-providers.json" ]; then
+  # Repair existing service definitions before provider commands reload them.
   "$router_dir/bin/install" --take-over-managed-router
+  configure_jev
 else
+  # Fresh setup runs its doctor; Jev must already be ready with discovery on.
+  configure_jev
   "$router_dir/install.sh" --no-provider --no-tray
 fi
 
-if "$router_cli" providers generic show jev --json >/dev/null 2>&1; then
-  "$router_cli" providers generic edit jev \
-    --name "Jev Router" \
-    --base-url http://127.0.0.1:4319/v1 \
-    --adapter openai-responses \
-    --allow-private
-else
-  "$router_cli" providers generic add jev \
-    --name "Jev Router" \
-    --base-url http://127.0.0.1:4319/v1 \
-    --adapter openai-responses \
-    --allow-private
-fi
-"$router_cli" providers generic enable jev
-
-node "$repo_dir/server/configure-model.mjs"
-node "$repo_dir/server/configure-auth.mjs"
 "$router_cli" chatgpt-session enable
 "$router_cli" refresh-catalog
 "$router_dir/bin/control" picker set jev/auto show

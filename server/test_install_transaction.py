@@ -58,6 +58,8 @@ state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
 with open(os.environ['FIXTURE_CALLS'],'a') as log:log.write('node '+ ' '.join(sys.argv[1:])+'\\n')
 if 'configure-model.mjs' in sys.argv[1]:
  os.execv(os.environ['FIXTURE_NODE'],[os.environ['FIXTURE_NODE'],os.environ['FIXTURE_SOURCE']+'/server/configure-model.mjs'])
+if 'configure-auth.mjs' in sys.argv[1]:
+ (state/'fixture-jev-auth').write_text('configured')
 if 'discovery-mode.mjs' in sys.argv[1]:
  (state/'discovery-mode.json').write_text(json.dumps({'version':1,'discovery':'enabled'}))
 if 'catalog.mjs' in sys.argv[1]:
@@ -71,7 +73,14 @@ if 'catalog.mjs' in sys.argv[1]:
 import json,os,pathlib,sys
 state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
 with open(os.environ['FIXTURE_CALLS'],'a') as log:log.write('cli '+' '.join(sys.argv[1:])+'\\n')
-if sys.argv[1:3]==['providers','generic'] and 'show' in sys.argv:sys.exit(1)
+if sys.argv[1:3]==['providers','generic']:
+ if os.environ.get('FIXTURE_STALE_SERVICE') and not (state/'fixture-service-repaired').exists():
+  raise RuntimeError('stale service must be repaired before provider publication/restart')
+ if 'show' in sys.argv:sys.exit(1)
+if sys.argv[1:4]==['providers','generic','enable']:
+ (state/'generic-providers.json').write_text(json.dumps({'version':1,'providers':[{
+  'id':'jev','displayName':'Jev Router','baseUrl':'http://127.0.0.1:4319/v1',
+  'adapter':'openai-responses','allowPrivate':True,'enabled':True}]}))
 if sys.argv[1:3]==['chatgpt-session','enable']:
  if json.loads((state/'discovery-mode.json').read_text())['discovery']=='disabled':
   print('ChatGPT session sharing cannot be enabled while credential discovery is disabled.');sys.exit(1)
@@ -81,6 +90,19 @@ import json,os,pathlib,sys,subprocess
 state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
 with open(os.environ['FIXTURE_CALLS'],'a') as log:log.write('install '+' '.join(sys.argv[1:])+'\\n')
 if '--prepare-only' in sys.argv:sys.exit(0)
+if '--take-over-managed-router' not in sys.argv:
+ # Use the doctor's actual provider/model readiness helpers before activation.
+ source=(pathlib.Path(os.environ['FIXTURE_SOURCE'])/'router/src').as_uri()
+ code="import {genericProviderConfigured} from '"+source+"/generic-provider-readiness.mjs';" \
+      +"import {selectedConfiguredListedModels} from '"+source+"/provider-selection.mjs';" \
+      +"if(!genericProviderConfigured('jev'))throw Error('FAIL Enabled providers: none');" \
+      +"if(!['jev/auto','jev/manual'].every(s=>selectedConfiguredListedModels().some(m=>m.slug===s)))throw Error('FAIL Merged catalog');"
+ subprocess.run([os.environ['FIXTURE_NODE'],'--input-type=module','-e',code],check=True)
+ if not (state/'fixture-jev-auth').exists():
+  raise RuntimeError('Jev authentication must be configured before embedded validation')
+(state/'fixture-service-repaired').write_text('repaired')
+if os.environ.get('FIXTURE_FAIL_EMBEDDED'):
+ raise RuntimeError('synthetic embedded installation failure')
 disabled='--no-discovery' in sys.argv
 (state/'discovery-mode.json').write_text(json.dumps({'version':1,'discovery':'disabled' if disabled else 'enabled'}))
 (state/'merged-models.json').write_text(json.dumps({'models':[] if disabled else [{'slug':'test/native'}]}))
@@ -174,6 +196,29 @@ if sys.argv[1:3]==['service','restart']:
         self.assertNotIn("install --no-provider --no-discovery", calls)
         self.assertIn("chatgpt-session enable", calls)
         self.assertTrue(json.loads((self.state / "merged-models.json").read_text())["models"])
+
+    def test_embedded_failure_restores_preregistered_state(self) -> None:
+        result = self.run_install(FIXTURE_FAIL_EMBEDDED="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synthetic embedded installation failure", result.stderr)
+        self.assertEqual(self.config.read_bytes(), self.original)
+        for name in ["generic-providers.json", "user-models.json", "fixture-jev-auth"]:
+            self.assertFalse((self.state / name).exists(), name)
+
+    def test_reinstall_repairs_stale_service_before_provider_publication(self) -> None:
+        (self.state / "enabled-providers.json").write_text('{"version":1,"providers":[]}')
+        result = self.run_install(FIXTURE_STALE_SERVICE="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = (self.base / "calls").read_text()
+        self.assertLess(calls.index("install --take-over-managed-router"),
+                        calls.index("cli providers generic show jev"))
+
+    def test_install_preserves_existing_provider_selection(self) -> None:
+        selection = '{"version":1,"providers":["deepseek"]}\n'
+        (self.state / "enabled-providers.json").write_text(selection)
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.state / "enabled-providers.json").read_text(), selection)
 
     def test_reinstall_keeps_default_config_and_profile_identical(self) -> None:
         first = self.run_install()
