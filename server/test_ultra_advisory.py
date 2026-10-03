@@ -33,7 +33,7 @@ class UltraAdvisoryHTTP(unittest.TestCase):
             _, body = self.call(payload_for([message("user", "Review independent subsystems.")]))
         delta = next(json.loads(line[6:])["delta"] for line in body.decode().splitlines()
                      if line.startswith("data: ") and "output_text.delta" in line)
-        self.assertTrue(delta.startswith("[gpt-6-astra / max]\n\n[Jev Ultra 추천]"))
+        self.assertTrue(delta.startswith("[gpt-6-astra / max]\n\n[Jev Ultra 추천: GPT-6 Astra]"))
         self.assertIn("GPT-6 Astra", delta)
         self.assertNotIn('"effort": "ultra"', json.dumps(Edge.payloads[-1]))
     def test_fresh_advisory_is_visible_and_api_effort_stays_valid(self) -> None:
@@ -52,7 +52,7 @@ class UltraAdvisoryHTTP(unittest.TestCase):
             # Nonstream path uses the same local authenticated HTTP relay.
             _, body = self.call(payload_for(opening, stream=False))
             rendered = json.loads(body)["output"][0]["content"][0]["text"]
-            self.assertIn("Ultra", rendered)
+            self.assertIn("[Jev Ultra 추천: GPT-6.1 Sol]", rendered)
             self.assertIn("직접 선택", rendered)
             self.assertNotIn("/ ultra]", rendered)
             self.assertEqual(Edge.payloads[-1]["reasoning"]["effort"], "max")
@@ -75,12 +75,24 @@ class UltraAdvisoryHTTP(unittest.TestCase):
         shown = {"model": jev.SOL_61, "effort": "max", "ultra_advice": "parallel_review"}
         with mock.patch.object(jev.os.path, "exists", return_value=True):
             header = jev.presentation_signature({}, shown)
-            self.assertIn("Ultra", header)
+            self.assertIn("[Jev Ultra 추천: GPT-6.1 Sol]", header)
             self.assertIsNone(jev.presentation_signature(
                 {"text": {"format": {"type": "json_schema"}}}, shown))
         payload = {"input": [{"role": "assistant", "content": header + "Ready"}]}
         self.assertEqual(jev.strip_signatures(payload), 1)
         self.assertEqual(payload["input"][0]["content"], "Ready")
+
+    def test_legacy_advice_is_removed_from_replayed_assistant_text(self) -> None:
+        from ultra_advisory import REASONS, recommendation
+
+        for model, target in ((jev.SOL_61, "GPT-6.1 Sol"),
+                              (jev.ASTRA, "GPT-6 Astra")):
+            for reason in REASONS:
+                legacy = recommendation(model, reason).replace(
+                    f"[Jev Ultra 추천: {target}]", "[Jev Ultra 추천]")
+                payload = {"input": [{"role": "assistant", "content": legacy + "Ready"}]}
+                self.assertEqual(jev.strip_signatures(payload), 1)
+                self.assertEqual(payload["input"][0]["content"], "Ready")
 
     def test_technical_fallback_never_carries_ultra_advice(self) -> None:
         with mock.patch.object(jev, "call_jev_routed", side_effect=TimeoutError()):

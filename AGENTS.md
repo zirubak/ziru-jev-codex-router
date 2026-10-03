@@ -13,7 +13,11 @@ the portable embedded router tests.
   Never use the owner's running service as a test fixture.
 - Required checks: `python3 -m unittest discover -s server -p 'test_*.py'`,
   `python3 -m compileall -q server poc`, `python3 poc/eval_routing.py`, and
-  `(cd router && npm run check && npm test)`. Preserve CI platform lanes.
+  `(cd router && npm run check && npm test)`.
+- The owner disabled repository GitHub Actions on 2026-10-02. Remote CI is
+  not a merge gate. Keep the local checks and integrated review above; merge
+  reviewed candidates after those checks pass. Do not re-enable Actions
+  without an explicit owner request.
 - One integrated code and Python specialist review of changed behavior is
   required. Reviewers are read-only; the owner stages and commits.
 - Installation uses the root transaction. Preserve unrelated settings and
