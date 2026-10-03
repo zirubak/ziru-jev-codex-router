@@ -153,8 +153,9 @@ import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { desktopArtifacts } from '../src/desktop-compatibility.mjs';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
 
 function rpcClient(input, output) {
@@ -216,6 +217,22 @@ test('native callbacks with colliding IDs bypass thread queues and preserve auth
   child.emit('exit', 0);
 });
 
+/** Real-native fixtures must satisfy the same canonical manifest contract as the installer. */
+async function nativeManifest(directory) {
+  const native = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY);
+  const app = resolve(native, '../../../../../../..');
+  const artifacts = desktopArtifacts(app);
+  assert.equal(artifacts.nativeBinary, native, 'JEV_DESKTOP_NATIVE_BINARY must be the codex executable inside a Desktop application');
+  return {
+    version: 1, codexHome: directory, provider, ...artifacts,
+    appExecutable: join(app, 'Contents/MacOS/ChatGPT'),
+    bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
+    routeStateDirectory: join(directory, 'private-routes'),
+    expectedAppSha256: createHash('sha256').update(await readFile(artifacts.appAsar)).digest('hex'),
+    expectedNativeSha256: createHash('sha256').update(await readFile(native)).digest('hex'),
+  };
+}
+
 test('native app-server preserves official config and confirms round-trip provider switches', {
   skip: !process.env.JEV_DESKTOP_NATIVE_BINARY || !process.env.JEV_DESKTOP_NATIVE_CATALOG,
   timeout: 90000,
@@ -226,13 +243,7 @@ test('native app-server preserves official config and confirms round-trip provid
   const config = `model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = ${JSON.stringify(catalog)}\n`;
   await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   const manifest = join(directory, 'bridge.json');
-  const appAsar = join(directory, 'app.asar');
-  await writeFile(appAsar, 'isolated application fixture');
-  await writeFile(manifest, JSON.stringify({
-    version: 1, nativeBinary: process.env.JEV_DESKTOP_NATIVE_BINARY, provider, appAsar, routeStateDirectory: join(directory, 'private-routes'),
-    expectedAppSha256: createHash('sha256').update(await readFile(appAsar)).digest('hex'),
-    expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
-  }), { mode: 0o600 });
+  await writeFile(manifest, JSON.stringify(await nativeManifest(directory)), { mode: 0o600 });
   const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
@@ -341,38 +352,33 @@ test('forking a Jev thread with an official model selects the official provider'
   assert.equal(calls.at(-1).params.modelProvider, 'openai');
 });
 
-test('each native invocation disables Jev for missing or stale application pins', {
+test('each native invocation disables Jev for a noncanonical Desktop manifest', {
   skip: !process.env.JEV_DESKTOP_NATIVE_BINARY,
   timeout: 90000,
 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-pins-'));
-  const appAsar = join(directory, 'app.asar');
-  await writeFile(appAsar, 'isolated application fixture');
-  const pins = {
-    appAsar,
-    expectedAppSha256: createHash('sha256').update(await readFile(appAsar)).digest('hex'),
-    expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
-  };
+  const canonical = await nativeManifest(directory);
   const manifest = join(directory, 'bridge.json');
   const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
   try {
     for (const change of [
-      { expectedAppSha256: undefined },
-      { expectedNativeSha256: undefined },
-      { expectedAppSha256: '0'.repeat(64) },
-      { expectedNativeSha256: '0'.repeat(64) },
+      { codexHome: undefined },
+      { codexHome: join(directory, 'unregistered-home') },
+      { appAsar: join(directory, 'app.asar') },
+      { appExecutable: canonical.appExecutable.replace(/ChatGPT$/, 'Other') },
+      { bridgeBinary: undefined },
       { routeStateDirectory: undefined },
     ]) {
-      await writeFile(manifest, JSON.stringify({ version: 1, nativeBinary: process.env.JEV_DESKTOP_NATIVE_BINARY, provider, routeStateDirectory: join(directory, 'private-routes'), ...pins, ...change }), { mode: 0o600 });
+      await writeFile(manifest, JSON.stringify({ ...canonical, ...change }), { mode: 0o600 });
       const child = spawn(process.execPath, [fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)), 'app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
       const client = rpcClient(child.stdin, child.stdout);
       try {
         await client.call('initialize', { clientInfo: { name: 'jev_pin_test', version: '1' }, capabilities: { experimentalApi: true } });
         client.notify('initialized');
         const models = await client.call('model/list');
-        assert.equal(models.data.some((model) => model.model.startsWith('jev/')), false, `Jev enabled despite pin mismatch: ${Object.keys(change)[0]}`);
+        assert.equal(models.data.some((model) => model.model.startsWith('jev/')), false, `Jev enabled despite noncanonical manifest: ${Object.keys(change)[0]}`);
         assert.ok(models.data.length > 0, 'ordinary native model list remains available');
       } finally {
         client.close();
