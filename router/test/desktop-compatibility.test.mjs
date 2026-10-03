@@ -3,7 +3,7 @@ import test from 'node:test';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { DesktopContractError, desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
 
 function archive(script = 'process.env.CODEX_CLI_PATH', entryOverrides = {}) {
   const payload = Buffer.from(script);
@@ -68,7 +68,8 @@ test('signed compatible builds qualify without a version allowlist and cache by 
 test('unsigned applications are rejected before probing or creating a receipt cache', async (t) => {
   const { options, dependencies, calls } = await fixture(t);
   dependencies.verifySignature = async () => { calls.push('signature'); throw new Error('Invalid OpenAI signature'); };
-  await assert.rejects(qualifyDesktop(options, dependencies), /Invalid OpenAI signature/);
+  await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
+    !(error instanceof DesktopContractError) && /Invalid OpenAI signature/.test(error.message));
   assert.deepEqual(calls, ['signature']);
   await assert.rejects(stat(options.cacheDirectory), { code: 'ENOENT' });
 });
@@ -81,7 +82,8 @@ test('failed qualification never publishes a success receipt', async (t) => {
         if (result === 'rejected') throw new Error('Native contract failed');
         return { checks: [] };
       };
-      await assert.rejects(qualifyDesktop(options, dependencies), /Native contract/);
+      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
+        error instanceof DesktopContractError && /Native contract/.test(error.message));
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
   }
@@ -100,7 +102,8 @@ test('artifact or adapter replacement during a probe cannot publish a receipt', 
         else await writeFile(change === 'app' ? files.appAsar : files.nativeBinary, 'replaced during qualification');
         return result;
       };
-      await assert.rejects(qualifyDesktop(options, dependencies), /changed during qualification/);
+      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
+        !(error instanceof DesktopContractError) && /changed during qualification/.test(error.message));
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
   }
@@ -118,7 +121,8 @@ test('launch hook qualification reads actual ASAR entries and refuses missing or
     await t.test(name, async (subtest) => {
       const { options, dependencies, files, calls } = await fixture(subtest);
       await writeFile(files.appAsar, contents);
-      await assert.rejects(qualifyDesktop(options, dependencies), /Desktop/);
+      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
+        error instanceof DesktopContractError && /Desktop/.test(error.message));
       assert.deepEqual(calls, ['signature']);
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
@@ -137,7 +141,8 @@ test('qualification refuses shared or linked cache directories', async (t) => {
         await mkdir(target, { mode: 0o700 });
         await symlink(target, options.cacheDirectory);
       }
-      await assert.rejects(qualifyDesktop(options, dependencies), /private and owner-only/);
+      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
+        !(error instanceof DesktopContractError) && /private and owner-only/.test(error.message));
       assert.deepEqual(calls, ['signature']);
     });
   }

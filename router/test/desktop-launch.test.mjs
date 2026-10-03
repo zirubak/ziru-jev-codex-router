@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { planDesktopLaunch } from '../src/desktop-launch.mjs';
+import { DesktopContractError } from '../src/desktop-compatibility.mjs';
+import { desktopVerdict, planDesktopLaunch } from '../src/desktop-launch.mjs';
 
 const manifest = {
   version: 1, nativeBinary: '/app/codex', appExecutable: '/app/ChatGPT',
@@ -46,4 +47,23 @@ test('a signed update that passes the current native contract keeps the bridge e
   assert.equal(result.mode, 'jev');
   assert.equal(result.env.CODEX_CLI_PATH, manifest.bridgeBinary);
   assert.equal(result.warning, null);
+});
+
+test('an incompatible contract selects the native recovery launch instead of exiting', async () => {
+  const verdict = await desktopVerdict(async () => { throw new DesktopContractError('Desktop no longer exposes the required CLI launch hook'); });
+  assert.equal(verdict.contractVerified, false);
+  assert.match(verdict.reason, /launch hook/);
+  const result = planDesktopLaunch(manifest, '/private/manifest.json', originalEnv, verdict);
+  assert.equal(result.mode, 'native');
+  assert.equal(result.env.CODEX_CLI_PATH, undefined);
+  assert.equal(result.executable, manifest.appExecutable);
+  assert.deepEqual(await desktopVerdict(async () => ({ qualified: true })), { contractVerified: true, reason: null });
+});
+
+test('signature, cache and update failures remain hard stops', async () => {
+  for (const message of ['Desktop must have a valid OpenAI signature; no adapter was enabled',
+    'Desktop qualification cache must be private and owner-only',
+    'Desktop or adapter changed during qualification; reopen after the update finishes']) {
+    await assert.rejects(desktopVerdict(async () => { throw new Error(message); }), { message });
+  }
 });

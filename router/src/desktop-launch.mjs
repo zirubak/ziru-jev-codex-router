@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { qualifyDesktop } from './desktop-compatibility.mjs';
+import { DesktopContractError, qualifyDesktop } from './desktop-compatibility.mjs';
 import { readDesktopManifest } from './desktop-runtime.mjs';
 
 /** The contract verdict, rather than a release allowlist, selects the adapter. */
@@ -28,6 +28,17 @@ export function planDesktopLaunch(manifest, manifestPath, environment, observed)
     warning: compatible ? null : 'Desktop compatibility is unverified. Jev chats remain readable; reconnect before sending a Jev request.' };
 }
 
+/** Only a failed adapter contract selects native recovery; other failures stop the launch. */
+export async function desktopVerdict(qualify) {
+  try {
+    await qualify();
+    return { contractVerified: true, reason: null };
+  } catch (error) {
+    if (!(error instanceof DesktopContractError)) throw error;
+    return { contractVerified: false, reason: error.message };
+  }
+}
+
 async function main() {
   if (process.platform !== 'darwin') throw new Error('Desktop integration requires macOS');
   const manifestPath = process.argv[2];
@@ -39,11 +50,13 @@ async function main() {
   if (commands.split('\n').some((line) => line.trim() === manifest.appExecutable)) {
     throw new Error('Codex is already running. Quit it yourself, then open this launcher. No process was stopped.');
   }
-  await qualifyDesktop({ app: manifest.app, cacheDirectory: path.join(path.dirname(manifestPath), 'qualifications') });
-  if (manifest.session) {
+  const verdict = await desktopVerdict(() => qualifyDesktop({ app: manifest.app,
+    cacheDirectory: path.join(path.dirname(manifestPath), 'qualifications') }));
+  if (verdict.contractVerified && manifest.session) {
     execFileSync(manifest.session.python, [manifest.session.script, 'activate', manifestPath], { stdio: 'pipe' });
   }
-  const plan = planDesktopLaunch(manifest, manifestPath, process.env, { contractVerified: true });
+  const plan = planDesktopLaunch(manifest, manifestPath, process.env, verdict);
+  if (verdict.reason) process.stderr.write(`${verdict.reason}\n`);
   if (plan.warning) process.stderr.write(`${plan.warning}\n`);
   // The caller explicitly starts the app. Installation never invokes this path.
   const child = spawn(plan.executable, plan.args, { env: plan.env, detached: true, windowsHide: true, stdio: 'ignore' });

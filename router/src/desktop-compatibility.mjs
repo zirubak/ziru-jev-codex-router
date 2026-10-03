@@ -12,6 +12,14 @@ export const CONTRACT_VERSION = 1;
 const signingRequirement = 'anchor apple generic and identifier "com.openai.codex" and certificate leaf[subject.OU] = "2DC432GLL2"';
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 
+/** The signed build does not satisfy the adapter contract; native recovery remains safe. */
+export class DesktopContractError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'DesktopContractError';
+  }
+}
+
 export function desktopArtifacts(app) {
   if (!path.isAbsolute(app)) throw new Error('Desktop application path must be absolute');
   return {
@@ -123,9 +131,14 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
     receipt = readReceipt(receiptFile, expected);
   }
   if (!receipt) {
-    await hook(app);
-    const result = await probe(desktopArtifacts(app).nativeBinary);
-    if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) throw new Error('Native contract returned no version evidence');
+    let result;
+    try {
+      await hook(app);
+      result = await probe(desktopArtifacts(app).nativeBinary);
+      if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) throw new Error('Native contract returned no version evidence');
+    } catch (error) {
+      throw new DesktopContractError(error?.message ?? String(error), { cause: error });
+    }
     receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
       checks: result.checks, checkedAt: new Date().toISOString() };
   }
