@@ -89,6 +89,47 @@ selection runs Sol/high; an Astra selection runs Astra/high. **High does not pin
 Astra.** Wait for the current response to finish before changing effort for the
 next request. To pin a model yourself, choose its official model entry instead.
 
+### Examples: which mode should I choose?
+
+**Example 1 — a small edit, without managing settings**
+
+Select **Auto**, then send:
+
+> Change the Save button label to Save changes. Keep the existing behavior and check the layout.
+
+You specify the outcome; Jev chooses both model and effort. An illustrative
+reply label might be `[gpt-6-luna / low]`, but the context can lead to another
+choice. Leaving the slider at High does not force High in Auto.
+
+**Example 2 — investigate a bug at a depth you choose**
+
+Select **Manual**, set the effort slider to **High**, then send:
+
+> Find why this login request sometimes returns 401. Reproduce the failure, fix its cause, and run the affected tests.
+
+Jev still chooses the model. If it chooses Sol, the route is Sol/high; if it
+chooses Astra, it is Astra/high. Subsequent tool continuations can change models,
+while the effort you selected remains High. Typing “High” in a prompt is not the
+Manual setting: choose the mode and use the effort control before sending.
+
+**Example 3 — the same request, two different choices**
+
+> Review this patch for permission bugs and missing regression coverage.
+
+| What you select | Who chooses the model? | Who chooses effort? |
+| --- | --- | --- |
+| Auto, even with High visible in the slider | Jev, under the route policy | Jev; actual effort may differ from the slider |
+| Manual + High | Jev, under the route policy | You; the selected effort stays High |
+
+Use Auto when you want the router to adjust depth as the work changes. Use
+Manual when keeping a particular reasoning depth matters to you. A mandatory
+review policy can constrain the model in either mode; Manual does not remove
+that policy or choose a fixed model. High is a setting, not proof that a review
+was performed or that the result is correct.
+
+These labels and scenarios explain the controls; they are not recorded runs,
+fixed route promises or measured quality/cost comparisons.
+
 ### Common questions
 
 - Moving the slider in Auto does not override Jev. Select Manual to apply it.
