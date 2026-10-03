@@ -142,6 +142,9 @@ export class DesktopProviderBridge {
     }
     if (mode && message.method === 'thread/settings/updated') {
       const params = this.virtualSettings(message.params, `jev/${mode}`);
+      // Desktop takes its current model and the next turn's collaboration
+      // settings from this nested native notification, not the outer envelope.
+      if (params.threadSettings) params.threadSettings = this.virtualSettings(params.threadSettings, `jev/${mode}`);
       return { ...message, params };
     }
     return message;

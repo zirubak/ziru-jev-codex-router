@@ -405,9 +405,17 @@ test('collaboration settings and notifications map only the selected Jev thread'
   await bridge.handle('turn/start', { threadId: 'fixture', collaborationMode: { mode: 'plan', settings: { model: 'jev/manual', reasoning_effort: 'high' } }, input: [] });
   assert.equal(calls.at(-1).params.model, 'gpt-6.1-sol');
   assert.equal(calls.at(-1).params.collaborationMode.settings.model, 'gpt-6.1-sol');
-  const notification = { method: 'thread/settings/updated', params: { threadId: 'fixture', model: 'gpt-6.1-sol', effort: 'high', collaborationMode: { mode: 'plan', settings: { model: 'gpt-6.1-sol', reasoning_effort: 'high' } } } };
-  assert.equal(bridge.notification(notification).params.model, 'jev/manual');
-  assert.equal(bridge.notification(notification).params.collaborationMode.settings.model, 'jev/manual');
+  const notification = { method: 'thread/settings/updated', params: { threadId: 'fixture', threadSettings: {
+    model: 'gpt-6.1-sol', modelProvider: 'jev-router-manual', effort: 'high',
+    collaborationMode: { mode: 'plan', settings: { model: 'gpt-6.1-sol', reasoning_effort: 'high' } },
+    approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' },
+  } } };
+  const mapped = bridge.notification(notification).params.threadSettings;
+  assert.equal(mapped.model, 'jev/manual');
+  assert.equal(mapped.collaborationMode.settings.model, 'jev/manual');
+  assert.deepEqual(mapped.sandboxPolicy, { type: 'readOnly' });
+  assert.equal(mapped.approvalPolicy, 'never');
+  assert.equal(notification.params.threadSettings.model, 'gpt-6.1-sol');
   const official = { ...notification, params: { ...notification.params, threadId: 'unmanaged' } };
   assert.deepEqual(bridge.notification(official), official);
 });

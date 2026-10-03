@@ -68,6 +68,8 @@ async function connect(context) {
   const child = spawn(binary, ['app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
   const pending = new Map();
   const notices = [];
+  const settings = [];
+  let settingsWaiter;
   let sequence = 0;
   let turnDone;
   const request = (method, params = {}) => new Promise((resolve, reject) => {
@@ -84,6 +86,11 @@ async function connect(context) {
       if (message.error) entry.reject(new Error(message.error.message));
       else entry.resolve(message.result);
     } else {
+      if (message.method === 'thread/settings/updated') {
+        const entry = { raw: message, public: bridge.notification(message) };
+        settings.push(entry);
+        if (settingsWaiter?.threadId === message.params.threadId) settingsWaiter.resolve(entry);
+      }
       if (message.method === 'thread/tokenUsage/updated') notices.push({ window: message.params.tokenUsage.modelContextWindow });
       if (message.method === 'item/started' && message.params.item.type === 'contextCompaction') notices.push({ compaction: true });
       if (message.method === 'turn/completed') turnDone?.(message.params.turn.status);
@@ -93,7 +100,13 @@ async function connect(context) {
   child.stdin.write('{"method":"initialized"}\n');
   const bridge = new DesktopProviderBridge({ request, provider: context.provider, state: new PrivateRouteState(join(context.directory, 'private-routes')) });
   return {
-    request, bridge, notices,
+    request, bridge, notices, settings,
+    nextSettings(threadId) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Native settings notification timed out')), 10000);
+        settingsWaiter = { threadId, resolve(entry) { clearTimeout(timer); settingsWaiter = null; resolve(entry); } };
+      });
+    },
     async turn(call, params) {
       let timer;
       const done = new Promise((resolve, reject) => {
@@ -162,5 +175,54 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
     assert.equal(started.model, 'gpt-6.1-sol');
     assert.equal(started.modelProvider, 'openai');
     assert.equal(started.sandbox.type, 'readOnly');
+  } finally { await connection.close(); }
+});
+
+test('native effort-only updates keep Jev model identity in Desktop settings notifications', {
+  skip: !binary || !catalog, timeout: 90000,
+}, async (t) => {
+  const context = await fixture(t);
+  const connection = await connect(context);
+  try {
+    for (const mode of ['manual', 'auto']) {
+      const model = `jev/${mode}`;
+      const started = await connection.bridge.handle('thread/start', {
+        model, cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
+        config: { model_reasoning_effort: 'low' },
+      });
+      const threadId = started.thread.id;
+      for (const effort of ['medium', 'high', 'max']) {
+        connection.settings.length = 0;
+        const observed = connection.nextSettings(threadId);
+        await connection.bridge.handle('thread/settings/update', { threadId, effort });
+        // The app consumes this nested notification as its next model selection.
+        const notice = await observed;
+        assert.ok(notice, 'native settings notification must be observed');
+        assert.equal(notice.raw.params.threadSettings.model, 'gpt-6.1-sol');
+        assert.equal(notice.public.params.threadSettings.model, model);
+        assert.equal(notice.public.params.threadSettings.collaborationMode.settings.model, model);
+        assert.equal(notice.public.params.threadSettings.effort, effort);
+        assert.equal(notice.public.params.threadSettings.modelProvider, `jev-router-${mode}`);
+        assert.equal(notice.public.params.threadSettings.sandboxPolicy.type, 'readOnly');
+        assert.deepEqual(notice.public.params.threadSettings.sandboxPolicy, notice.raw.params.threadSettings.sandboxPolicy);
+        await connection.turn(connection.bridge.handle.bind(connection.bridge), {
+          threadId, model: notice.public.params.threadSettings.model, effort,
+        });
+        assert.equal(context.calls.at(-1).mode, mode);
+        assert.equal(context.calls.at(-1).effort, effort);
+      }
+      await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'high' });
+      const resumed = await connection.bridge.handle('thread/resume', { threadId });
+      assert.equal(resumed.model, 'gpt-6.1-sol');
+      assert.equal(resumed.modelProvider, 'openai');
+      // Rebind already applies high; only an actual subsequent setting change
+      // guarantees the native notification whose pass-through we check here.
+      const restored = connection.nextSettings(threadId);
+      await connection.bridge.handle('thread/settings/update', { threadId, effort: 'medium' });
+      const official = await restored;
+      assert.deepEqual(official.public, official.raw);
+      assert.equal(official.public.params.threadSettings.model, 'gpt-6.1-sol');
+      assert.equal(official.public.params.threadSettings.modelProvider, 'openai');
+    }
   } finally { await connection.close(); }
 });

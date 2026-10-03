@@ -1,8 +1,9 @@
 # Optional native Desktop integration
 
-Status: follow-up correction candidate. Native picker visibility and initial
-Auto/Manual responses were observed, but Manual effort propagation and the
-repeated-compaction correction still require signed-in Desktop acceptance.
+Status: follow-up correction candidate. Native picker visibility and actual
+Auto/Manual inference were observed. A subsequent effort-slider test exposed
+an alias leak in nested native settings notifications; its correction still
+requires signed-in Desktop acceptance after reloading the adapter.
 This is an internal, build-specific integration, not an officially supported
 Desktop extension API.
 
@@ -54,6 +55,14 @@ local ingress; an unmarked official Sol request is never reclassified. The
 alias is restored for display only for a verified Jev route. If native model
 metadata for the carrier is unavailable, Jev is unavailable rather than using
 unknown-model defaults.
+
+The pinned Desktop build reads its current model and next-turn collaboration
+settings from `thread/settings/updated.params.threadSettings`. Both nested
+model fields must retain the Jev alias. Restoring only the outer envelope leaks
+the internal Sol name into the picker and can make a later effort change select
+the official provider. The native regression feeds the public notification
+back into the next turn and checks the mode, effort and read-only permissions,
+including an explicit return to the official provider.
 
 For the pinned build, Jev threads request the supported 872000 context window
 and 740000 compaction threshold. Unknown Jev metadata previously fell back to
