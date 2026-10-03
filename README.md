@@ -33,6 +33,44 @@ An optional, build-specific [Desktop bridge candidate](docs/release/native-deskt
 keeps the existing effort menu and separates Auto/Manual by name. The owner confirmed Auto/Manual switching and the effort slider in a fresh
 Desktop session on 2026-10-02. Ordinary installation does not enable this bridge.
 
+## Use Auto or Manual in Desktop
+
+The optional Desktop integration adds these entries to the model menu:
+
+| Entry | Model selection | Effort selection |
+| --- | --- | --- |
+| Jev Codex Router Auto | Jev chooses | Jev chooses; the displayed slider is ignored |
+| Jev Codex Router Manual | Jev chooses a compatible model | Your selected low, medium, high, xhigh or max |
+
+From your stable installation checkout, run `./install.sh --desktop`. Save your
+work, quit Codex yourself, then open the generated launcher:
+
+```sh
+open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
+```
+
+That path assumes the default state directory. Use the installer-reported path
+if you configured another one. Opening the original app normally retains the
+official connection. The integration is build-specific; after an unsupported
+app update, the launcher opens ordinary Codex until the build is qualified.
+See [supported builds and recovery](docs/release/native-desktop-bridge.md).
+
+## Update an existing installation
+
+Run from the stable checkout used by your installation:
+
+```sh
+bin/jev-codex-router update
+```
+
+The updater follows `main` and reruns the root installation transaction; it does
+not pin this preview tag. To opt into or refresh the Desktop launcher after the
+update, run `./install.sh --desktop` separately. The updater does not forward
+`--desktop`. Quit and reopen Desktop yourself when ready.
+
+See the [preview.2 changes and known limits](docs/release/v0.1.0-preview.2.md)
+and [diagnostics and recovery](server/INSTALL.md).
+
 ## Install
 
 This is a **private preview for macOS Codex Desktop**. You need access to this repository, a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).

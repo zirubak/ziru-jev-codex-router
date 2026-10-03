@@ -29,6 +29,43 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
 적용합니다. 사용자가 2026-10-02 새 Desktop 세션에서 전환과 effort 슬라이더의 정상 동작을 확인했습니다. 일반 설치로 활성화되지 않습니다.
 
+## Desktop에서 Auto 또는 Manual 사용하기
+
+선택형 Desktop 연결은 모델 메뉴에 다음 두 항목을 추가합니다.
+
+| 항목 | 모델 선택 | effort 선택 |
+| --- | --- | --- |
+| Jev Codex Router Auto | Jev가 결정 | Jev가 결정하며 화면 슬라이더 값은 무시 |
+| Jev Codex Router Manual | Jev가 호환 모델을 결정 | 사용자가 선택한 low·medium·high·xhigh·max 유지 |
+
+실제 설치에 사용하는 고정 checkout에서 `./install.sh --desktop`을 실행하세요.
+작업을 저장하고 Codex를 직접 종료한 다음 생성된 실행기를 여세요.
+
+```sh
+open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
+```
+
+위 경로는 기본 상태 디렉터리를 기준으로 합니다. 별도 경로를 설정했다면 설치기가
+알려준 경로를 사용하세요. 원래 앱 아이콘으로 열면 공식 연결을 사용합니다.
+Desktop 연결은 앱 빌드별로 검증되며, 지원되지 않는 앱 업데이트 후에는 일반 Codex로
+열립니다. [지원 빌드와 복구 안내](docs/release/native-desktop-bridge.md)를 참고하세요.
+
+## 기존 설치 업데이트
+
+실제 설치에 사용하는 고정 checkout에서 실행하세요.
+
+```sh
+bin/jev-codex-router update
+```
+
+업데이트는 `main`의 최신 소스를 가져오고 루트 설치 트랜잭션을 실행합니다.
+특정 preview tag에 고정하는 명령은 아닙니다. 업데이트 후 Desktop 실행기를 활성화하거나
+갱신하려면 `./install.sh --desktop`을 별도로 실행하세요. updater는 `--desktop`을
+전달하지 않습니다. 준비가 되면 Desktop을 직접 종료하고 다시 여세요.
+
+[preview.2 변경 사항과 알려진 한계](docs/release/v0.1.0-preview.2.md),
+[진단·복구 안내](server/INSTALL.md)를 참고하세요.
+
 ## 설치
 
 현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
