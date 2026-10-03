@@ -9411,12 +9411,14 @@ test("a long routed conversation is replayed as a window instead of in full", as
   }
 });
 
-for (const mode of ["auto", "manual"]) {
-test(`jev/${mode} receives the complete canonical replay for its executing model`, async () => {
+for (const [mode, desktop] of [["auto", false], ["manual", false], ["auto", true], ["manual", true]]) {
+test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete canonical replay for its executing model`, async () => {
   const gatewayBodies = [];
+  const gatewayHeaders = [];
   const gateway = await mockServer(async (request, response) => {
     gatewayBodies.push(await bodyJson(request));
-    json(response, 200, { output: [{ type: "message", role: "assistant", content: "ok" }] });
+    gatewayHeaders.push(request.headers);
+    json(response, 200, { output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "The fixture conversation and tool results are preserved in this checkpoint." }] }] });
   });
   const testRoot = mkdtempSync(path.join(os.tmpdir(), "routing-jev-canonical-"));
   const stateDir = path.join(testRoot, "state");
@@ -9432,7 +9434,7 @@ test(`jev/${mode} receives the complete canonical replay for its executing model
     providers: [{
       id: "jev",
       displayName: "Jev Router",
-      baseUrl: "http://127.0.0.1:4319/v1",
+      baseUrl: `http://127.0.0.1:${gateway.port}/v1`,
       adapter: "openai-responses",
       headers: {},
       allowPrivate: true,
@@ -9459,10 +9461,19 @@ test(`jev/${mode} receives the complete canonical replay for its executing model
       compHash: "jev-auto-test-v1",
     }],
   })}\n`);
+  const forwarderPort = await openPort();
+  const forwarder = desktop ? run("api-forwarder.mjs", {
+    CODEX_ROUTER_API_PORT: String(forwarderPort),
+    MODEL_ROUTER_STATE_DIR: stateDir,
+    MODEL_ROUTER_GENERIC_PROVIDERS: providersFile,
+    MODEL_ROUTER_USER_MODELS: userModelsFile,
+  }) : null;
   const routerPort = await openPort();
   const router = run("router.mjs", {
     CODEX_ROUTER_PORT: String(routerPort),
+    CODEX_NATIVE_BASE_URL: `http://127.0.0.1:${gateway.port}/native`,
     CODEX_ROUTER_GATEWAY_BASE_URL: `http://127.0.0.1:${gateway.port}/v1`,
+    CODEX_ROUTER_API_BASE_URL: `http://127.0.0.1:${forwarderPort}/v1`,
     CODEX_ROUTER_CONVERSATION_WINDOW: "1",
     CODEX_ROUTER_CONVERSATION_WINDOW_KB: "64",
     CODEX_ROUTER_QUIET: "1",
@@ -9472,6 +9483,7 @@ test(`jev/${mode} receives the complete canonical replay for its executing model
   });
   const oldToolOutput = `XMESH result: ${"x".repeat(40_000)}`;
   const input = [
+    ...(desktop ? [{ type: "additional_tools", role: "developer", tools: [{ type: "function", name: "fixture_tool", parameters: { type: "object" } }] }] : []),
     { type: "message", role: "system", content: "Operator rules." },
     { type: "message", role: "user", content: "The original tweet to inspect." },
     { type: "message", role: "assistant", content: "Earlier analysis." },
@@ -9485,18 +9497,25 @@ test(`jev/${mode} receives the complete canonical replay for its executing model
     ]).flat(),
     { type: "message", role: "user", content: "Continue from the existing evidence." },
   ];
+  if (desktop) {
+    for (const item of input) {
+      if (typeof item.content === "string") item.content = [{ type: "input_text", text: item.content }];
+    }
+  }
   const promptCacheKey = "stable-jev-session-cache-key";
 
   try {
+    if (forwarder) await waitFor(`http://127.0.0.1:${forwarderPort}/health`, forwarder, { Authorization: `Bearer ${INTERNAL_KEY}` });
     await waitFor(`${routerBase(routerPort)}/models`, router);
     const response = await fetch(`${routerBase(routerPort)}/responses`, {
       method: "POST",
       headers: {
         Authorization: "Bearer CODEX_CALLER_SECRET",
         "Content-Type": "application/json",
+        ...(desktop ? { "x-jev-selection-mode": mode, "x-openai-internal-codex-responses-lite": "true" } : {}),
       },
       body: JSON.stringify({
-        model: `jev/${mode}`,
+        model: desktop ? "gpt-6.1-sol" : `jev/${mode}`,
         stream: false,
         prompt_cache_key: promptCacheKey,
         input,
@@ -9504,9 +9523,44 @@ test(`jev/${mode} receives the complete canonical replay for its executing model
     });
     assert.equal(response.status, 200, await response.text());
     assert.equal(gatewayBodies.length, 1);
-    assert.equal(gatewayBodies[0].model, `jev-${mode}`);
+    assert.equal(gatewayBodies[0].model, desktop ? mode : `jev-${mode}`);
+    if (desktop) {
+      assert.equal(gatewayHeaders[0]["x-openai-internal-codex-responses-lite"], "true");
+      assert.equal(gatewayHeaders[0]["x-jev-selection-mode"], undefined);
+      assert.equal(gatewayHeaders[0].authorization, undefined);
+    }
     assert.equal(gatewayBodies[0].prompt_cache_key, promptCacheKey);
     assert.deepEqual(gatewayBodies[0].input, input);
+    if (desktop) {
+      for (const [marker, model] of [["auto, manual", "gpt-6.1-sol"], ["invalid", "gpt-6.1-sol"], [mode, "gpt-6-astra"]]) {
+        const refused = await fetch(`${routerBase(routerPort)}/responses`, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-jev-selection-mode": marker },
+          body: JSON.stringify({ model, input: [] }),
+        });
+        assert.equal(refused.status, 400);
+        assert.equal((await refused.json()).error.code, "invalid_jev_selection");
+      }
+      assert.equal(gatewayBodies.length, 1, "invalid markers must never reach a provider");
+      const official = await fetch(`${routerBase(routerPort)}/responses`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-6.1-sol", stream: false, input: [] }),
+      });
+      assert.equal(official.status, 200, await official.text());
+      assert.equal(gatewayBodies.at(-1).model, "gpt-6.1-sol");
+      assert.equal(gatewayHeaders.at(-1)["x-jev-selection-mode"], undefined);
+      assert.equal(gatewayHeaders.at(-1)["x-openai-internal-codex-responses-lite"], undefined);
+      const compact = await fetch(`${routerBase(routerPort)}/responses/compact`, {
+        method: "POST", headers: { "Content-Type": "application/json",
+          "x-jev-selection-mode": mode, "x-openai-internal-codex-responses-lite": "true" },
+        body: JSON.stringify({ model: "gpt-6.1-sol", input }),
+      });
+      assert.equal(compact.status, 200, await compact.text());
+      assert.equal(gatewayBodies.at(-1).model, mode);
+      assert.equal(gatewayHeaders.at(-1)["x-openai-internal-codex-responses-lite"], "true");
+      assert.deepEqual(gatewayBodies.at(-1).input[0], input[0]);
+
+    }
+
 
     const [event] = await waitForUsageEvents(stateDir, 1, router);
     assert.equal(event.toolResultsAged ?? 0, 0);
@@ -9515,6 +9569,7 @@ test(`jev/${mode} receives the complete canonical replay for its executing model
     assert.equal(event.conversationWindowBytesSaved ?? 0, 0);
   } finally {
     await stopChild(router);
+    if (forwarder) await stopChild(forwarder);
     await closeServer(gateway.server);
     rmSync(testRoot, { recursive: true, force: true });
   }

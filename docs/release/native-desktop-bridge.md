@@ -1,8 +1,10 @@
 # Optional native Desktop integration
 
-Status: implementation candidate. Native picker acceptance on the signed-in
-account remains unverified. This is an internal, build-specific integration,
-not an officially supported Desktop extension API.
+Status: follow-up correction candidate. Native picker visibility and initial
+Auto/Manual responses were observed, but Manual effort propagation and the
+repeated-compaction correction still require signed-in Desktop acceptance.
+This is an internal, build-specific integration, not an officially supported
+Desktop extension API.
 
 The optional launcher preserves the original signed application bundle and the
 normal Codex config. It adds two models to the native app-server model list:
@@ -13,7 +15,10 @@ normal Codex config. It adds two models to the native app-server model list:
 | Jev Codex Router Manual | Applied: Jev chooses the model and preserves the selected effort |
 
 No frontend assets are patched. The ordinary effort menu remains unchanged.
-The app may hide Max according to its existing effort settings. Some account
+Enable Max in Settings → Configuration → Codex → Model features → Available
+reasoning efforts when that native setting is available. Checking it alone is
+not evidence that a Max request executed. Official Astra Ultra does not imply
+that Jev supports Ultra. Some account
 configurations also filter the model list through an official-model allowlist;
 those configurations can hide both Jev entries. Do not restore a global custom
 catalog or change feature flags to bypass that boundary.
@@ -42,6 +47,30 @@ models continue with the native provider. Jev selections are kept out of global
 model defaults. Native account operations, unknown methods, approvals, tool
 callbacks and compaction RPCs pass to the original app-server.
 
+Jev UI aliases use the known native `gpt-6.1-sol` metadata with separate
+`jev-router-auto` and `jev-router-manual` thread providers. Their explicit
+`x-jev-selection-mode` header selects the existing Jev route at the authenticated
+local ingress; an unmarked official Sol request is never reclassified. The
+alias is restored for display only for a verified Jev route. If native model
+metadata for the carrier is unavailable, Jev is unavailable rather than using
+unknown-model defaults.
+
+For the pinned build, Jev threads request the supported 872000 context window
+and 740000 compaction threshold. Unknown Jev metadata previously fell back to
+an effective 258400 window, causing repeated compaction when reported input was
+about 320000 tokens. This change preserves input and keeps compaction enabled.
+Native Responses-lite tools remain in `additional_tools`; its protocol header
+crosses the Jev relay and the existing confined API forwarder. Other providers
+retain their existing transport.
+
+Private per-thread route records contain only mode, model, effort and transaction
+state. The installer points to `$CODEX_HOME/jev-desktop-thread-routes`, separate
+from managed router state and installation backups. Only the adapter manages
+these records, so reinstall/rollback cannot rewind a live thread's route state.
+Missing, conflicting or unconfirmed route records fail closed for the affected
+thread. They are not authorization to rewrite native conversation history.
+
+
 An idle, persisted thread can switch providers by resuming the same thread ID.
 The adapter checks the effective model/provider and permission policy before
 acknowledging the switch. Busy threads, missing history, ambiguous permission
@@ -58,7 +87,9 @@ permissions or discard existing history.
    routed effort with the mode contract above, not just the composer label.
 3. Verify an idle persisted chat can switch back to official Sol with its
    permissions and history intact; verify official compaction separately.
-4. Verify ordinary original-app launch still works and an updated build disables
+4. After an adapter restart, verify Auto/Manual selection and the return to
+   official Sol remain correct with the same thread and permissions.
+5. Verify ordinary original-app launch still works and an updated build disables
    this integration. An app-server fixture is not native UI acceptance.
 
 The isolated tests cover native provider switching, reopening saved threads,

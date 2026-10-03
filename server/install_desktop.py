@@ -53,6 +53,14 @@ def private_write(destination: Path, content: bytes, mode: int) -> None:
 
 def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Path:
     hashes = verify_app(app)
+    # Native threads and their route records must advance together. Keep route
+    # records outside the install transaction's snapshotted/restored state.
+    route_state = codex.resolve() / "jev-desktop-thread-routes"
+    if route_state.is_symlink():
+        raise ValueError("refusing linked Desktop route state")
+    for managed in (state.resolve(), (codex / "jev-install-backups").resolve()):
+        if route_state.is_relative_to(managed) or managed.is_relative_to(route_state):
+            raise ValueError("Desktop route state must be separate from install state and backups")
     profile = tomllib.loads((codex / "jev.config.toml").read_text())
     provider = profile.get("model_providers", {}).get("jev-router")
     if not isinstance(provider, dict) or provider.get("base_url") != "http://127.0.0.1:4202/v1":
@@ -69,6 +77,7 @@ def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Pa
     manifest_path = destination / "manifest.json"
     manifest = {
         "version": 1, "provider": provider,
+        "routeStateDirectory": str(route_state),
         "nativeBinary": str(app / "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
         "appExecutable": str(app / "Contents/MacOS/ChatGPT"),
         "appAsar": str(app / "Contents/Resources/app.asar"),

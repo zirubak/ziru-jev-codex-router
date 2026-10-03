@@ -235,12 +235,12 @@ class PerCallEndToEnd(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
-    def call(self, payload):
+    def call(self, payload, extra_headers=None):
         self.logged.clear()
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.server.server_address[1]}/v1/responses",
             data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "Authorization": "Bearer fixture-local"},
+            headers={"Content-Type": "application/json", "Authorization": "Bearer fixture-local", **(extra_headers or {})},
         )
         with urllib.request.urlopen(request, timeout=30) as response:
             result = response.status, response.read()
@@ -590,6 +590,25 @@ class PerCallEndToEnd(unittest.TestCase):
         self.assertNotIn("XMESH historical action", json.dumps(decision_state))
         for key in ("task", "active_task", "step", "intent_tail", "tool", "tool_result_tail"):
             self.assertNotIn(key, forwarded)
+
+    def test_responses_lite_preserves_header_and_additional_tools(self):
+        history = [
+            {"type": "additional_tools", "role": "developer", "tools": [
+                {"type": "function", "name": "fixture", "parameters": {"type": "object"}}
+            ]},
+            message("user", "Inspect with the fixture tool."),
+        ]
+        with mock.patch.object(jev, "call_jev_routed", return_value=answer(jev.SOL_61, "medium")):
+            self.call(payload_for(history), {
+                "x-openai-internal-codex-responses-lite": "true",
+                "x-jev-selection-mode": "manual",
+                "ChatGPT-Account-Id": "must-not-forward",
+            })
+        self.assertEqual(Edge.payloads[-1]["input"], history)
+        headers = {k.lower(): v for k, v in Edge.headers_seen[-1].items()}
+        self.assertEqual(headers.get("x-openai-internal-codex-responses-lite"), "true")
+        self.assertNotIn("x-jev-selection-mode", headers)
+        self.assertNotIn("chatgpt-account-id", headers)
 
     def test_cache_controls_and_canonical_replay_survive_model_swaps_unchanged(self):
         cache_key = "stable-private-session-key"

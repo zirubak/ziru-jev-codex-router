@@ -26,6 +26,10 @@ def runtime_paths() -> tuple[Path, Path, Path]:
     state = state.resolve()
     if codex.is_relative_to(state):
         raise ValueError("state directory cannot contain CODEX_HOME")
+    route_state = (codex / "jev-desktop-thread-routes").resolve()
+    for managed in (state, (codex / "jev-install-backups").resolve()):
+        if route_state.is_relative_to(managed) or managed.is_relative_to(route_state):
+            raise ValueError("Desktop route state must be separate from install state and backups")
     return home, codex, state
 
 

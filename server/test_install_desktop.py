@@ -34,6 +34,22 @@ class DesktopInstallationTests(unittest.TestCase):
             self.assertEqual(original, (config.read_bytes(), backup.read_bytes()))
             manifest = json.loads((state / "desktop/manifest.json").read_text())
             self.assertTrue(manifest["nativeBinary"].endswith("CodexCLI.app/Contents/MacOS/codex"))
+            self.assertEqual(Path(manifest["routeStateDirectory"]), codex.resolve() / "jev-desktop-thread-routes")
+            self.assertFalse(Path(manifest["routeStateDirectory"]).exists(), "The bridge owns route-state initialization")
+            self.assertFalse(Path(manifest["routeStateDirectory"]).is_relative_to(state))
+            routes = Path(manifest["routeStateDirectory"])
+            routes.mkdir(mode=0o700)
+            record = routes / "fixture.json"
+            record.write_bytes(b"latest route revision")
+            with patch.object(install_desktop, "verify_app", return_value=install_desktop.SUPPORTED_HASHES):
+                install_desktop.install(codex, state, app, Path("/source"), Path("/bin/node"))
+                self.assertEqual(record.read_bytes(), b"latest route revision")
+                for overlapping in (codex, routes, routes / "child"):
+                    with self.assertRaisesRegex(ValueError, "separate"):
+                        install_desktop.install(codex, overlapping, app, Path("/source"), Path("/bin/node"))
+                (codex / "jev-install-backups").symlink_to(routes, target_is_directory=True)
+                with self.assertRaisesRegex(ValueError, "separate"):
+                    install_desktop.install(codex, state, app, Path("/source"), Path("/bin/node"))
             self.assertNotIn("model_catalog_json", manifest)
             self.assertEqual(manifest["provider"]["base_url"], "http://127.0.0.1:4202/v1")
             self.assertEqual((state / "desktop/manifest.json").stat().st_mode & 0o777, 0o600)

@@ -105,6 +105,43 @@ if sys.argv[1:3]==['service','restart']:
         (self.repo / "server/smoke.py").write_text(
             'import os,sys\nsys.exit(7 if os.environ.get("FIXTURE_FAIL_SMOKE") else 0)\n')
 
+    def test_begin_rejects_route_state_overlap_before_snapshot(self):
+        routes = self.codex_home / "jev-desktop-thread-routes"
+        routes.mkdir(mode=0o700)
+        for state in (routes, routes / "child"):
+            with self.subTest(state=state), mock.patch.dict(os.environ, {
+                **self.env, "MODEL_ROUTER_STATE_DIR": str(state),
+            }):
+                with self.assertRaisesRegex(ValueError, "Desktop route state"):
+                    transaction.begin()
+            self.assertFalse((self.codex_home / "jev-install-backups").exists())
+        alias = self.base / "route-alias"
+        alias.symlink_to(routes, target_is_directory=True)
+        with mock.patch.dict(os.environ, {**self.env, "MODEL_ROUTER_STATE_DIR": str(alias / "child")}):
+            with self.assertRaisesRegex(ValueError, "Desktop route state"):
+                transaction.begin()
+        self.assertFalse((self.codex_home / "jev-install-backups").exists())
+
+    def test_rollback_preserves_external_desktop_route_writer_state(self):
+        routes = self.codex_home / "jev-desktop-thread-routes"
+        routes.mkdir(mode=0o700)
+        record = routes / "fixture.json"
+        record.write_text('{"revision":1}')
+        record.chmod(0o600)
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(transaction.sys, "platform", "linux"):
+            backup = transaction.begin()
+            record.write_text('{"revision":2}')
+            lock = routes / "fixture.json.lock"
+            lock.write_text("active writer")
+            lock.chmod(0o600)
+            transaction.restore(backup)
+        self.assertEqual(record.read_text(), '{"revision":2}')
+        self.assertEqual(lock.read_text(), "active writer")
+        self.assertEqual(record.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(routes.stat().st_mode & 0o777, 0o700)
+        self.assertFalse((backup / "state/desktop/thread-routes").exists())
+
     @staticmethod
     def _script(path: Path, text: str):
         path.write_text(text)

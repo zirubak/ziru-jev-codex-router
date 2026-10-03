@@ -2334,6 +2334,10 @@ class Handler(BaseHTTPRequestHandler):
         markerer = None
         try:
             headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+            # Native Responses-lite carries tools inside additional_tools input
+            # items. Preserve its negotiation header with that canonical body.
+            if self.headers.get("x-openai-internal-codex-responses-lite") == "true":
+                headers["x-openai-internal-codex-responses-lite"] = "true"
             # The selected model must receive this exact canonical replay even
             # when the parent router's global aging/windowing knobs are enabled.
             # The local caller capability authenticates this internal contract;
