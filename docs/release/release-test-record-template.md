@@ -88,7 +88,7 @@ the conclusion unverified and state what boundary can actually be established.
 | Affected reruns after corrections | | | | | |
 | Dependency / staged-secret / diff checks | | | | | |
 | Integrated review | | | | | |
-| Required CI job results | | | | | |
+| Actions enabled/disabled and retained CI evidence | | | | | |
 
 - Failing/aborted attempts and verified explanation:
 - Unresolved mandatory case IDs and completion condition:
@@ -97,7 +97,8 @@ the conclusion unverified and state what boundary can actually be established.
 - Completion decision and evidence (do not infer from test count alone):
 - Learning judgment: existing code/tests/docs suffice, or exact saved lesson:
 
-A billing-blocked CI run is BLOCKED, not a successful run. A successful local
+A disabled or billing-blocked CI run is not a successful run. The current owner
+policy uses local checks and integrated review for merging. A successful local
 probe is not native slider acceptance. A commit, push, installation and merge
 are distinct outcomes. Do not schedule an automatic restart or add unrelated
 work merely to fill this template.

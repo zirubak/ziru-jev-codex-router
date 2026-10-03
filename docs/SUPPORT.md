@@ -17,11 +17,13 @@ was verified with Desktop `0.159.0-alpha.12.1` and CLI `0.159.3`; see
 
 The embedded router under `router/` remains a cross-platform fork. Its portable
 runtime and state-management suite runs on Ubuntu, macOS, and Windows with
-Node.js 24 in CI. Ubuntu and macOS are required release checks; Windows runs
-in a separate advisory workflow. Passing these checks does not make the root
+Node.js 24 in the retained CI definitions. Repository Actions are disabled by
+the owner as of 2026-10-02; required merge checks run locally per
+[AGENTS.md](../AGENTS.md). Passing local checks does not establish results on
+unexecuted platforms or make the root
 launchd installer supported on Linux or Windows.
 
-## Required CI lanes
+## Retained CI lanes (Actions disabled)
 
 | Lane | Runtime | What it proves |
 | --- | --- | --- |
@@ -32,9 +34,9 @@ launchd installer supported on Linux or Windows.
 | Codex app-server contract | Ubuntu / `codex-cli 0.155.0-alpha.9.2` | A real, known Codex binary completes both login-free provider configurations |
 | Isolated profile contract | Ubuntu / `codex-cli 0.159.3` | Explicit Jev profile and ordinary provider use separate authenticated HTTP transports |
 
-The five jobs in `.github/workflows/ci.yml` must succeed on the PR head before
-a macOS product merge. Browser-panel coverage runs inside the Ubuntu embedded
-router job.
+These definitions remain available for a future owner-authorized reactivation;
+they are not current merge gates. Browser-panel coverage is defined inside the
+Ubuntu embedded-router job. Disabled or billing-blocked CI is not PASS.
 
 ## Advisory Windows CI
 
@@ -51,9 +53,9 @@ Windows job hit a port-occupancy test timeout and was later cancelled at the
 workflow time limit. The cause is unresolved; moving the lane does not fix it
 or establish Windows product support.
 
-Both workflows cancel superseded runs for the same PR/ref. Required macOS
-product checks remain automatic and unchanged; documentation-only updates
-still produce their check results rather than leaving required checks pending.
+Both definitions cancel superseded runs for the same PR/ref when enabled.
+Actions are currently disabled, including manual Windows dispatch. Preserve
+local checks and report the remaining platform coverage limits.
 
 The Codex contract lane sets `CODEX_ROUTER_REQUIRE_REAL_CODEX=1`; absence of the
 binary is a failure, never a skip. It also checks the exact CLI version before
@@ -91,6 +93,6 @@ On Linux CI, use `npx playwright install --with-deps chromium`.
 
 Manual Windows installation and end-to-end use have not been validated by the
 maintainer. The macOS product preview may ship with this disclosed limitation;
-Windows CI remains enabled as portability feedback, not a release completion
-gate for this preview. Windows testers with repository access are invited to
+The Windows definition is retained as portability feedback, with Actions
+currently disabled. Windows testers with repository access are invited to
 report sanitized results through GitHub Issues as described in both READMEs.

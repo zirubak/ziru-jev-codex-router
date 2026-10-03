@@ -6,11 +6,10 @@ changelog and upstream release artifacts are not releases of this project.
 ## Before publishing
 
 - Identify the exact source commit and scoped fixes; link their issues.
-- Require the five macOS product CI jobs listed in
-  [SUPPORT.md](SUPPORT.md) to complete successfully on that commit. Record
-  skips and investigate failures rather than lowering assertions or silently
-  disabling a platform. Windows runs separately as advisory portability
-  feedback; its pending, failed or cancelled result does not gate this release.
+- Require the local checks and integrated reviews in [AGENTS.md](../AGENTS.md)
+  on the candidate. The owner disabled repository Actions on 2026-10-02;
+  remote CI is not a merge gate. Record skips and unresolved platform limits.
+  Keep workflow definitions for a future explicitly authorized reactivation.
 - Review dependency/lockfile changes, licenses and audit output.
 - Review context preservation, retry boundaries, privacy, and migration impact
   for any affected component.
@@ -28,7 +27,7 @@ changelog and upstream release artifacts are not releases of this project.
 ## After publishing
 
 - Verify the published tag/artifact resolves to the intended source.
-- Link the tested commit and CI run when closing issues.
+- Link the tested commit and local verification evidence when closing issues.
 - For a deployment, read back running policy/health separately from Git status.
 - Roll back with a reviewed revert or known source version, preserving user
   state. Never rewrite shared history or delete credentials as a rollback.
@@ -42,7 +41,7 @@ Branch protections and rulesets are repository settings, not implied by this
 document. Agree stable check names and merge policy before enforcing them;
 read back the actual GitHub settings before claiming protection. Do not make a
 new or failing platform check a required merge gate without qualification.
-The required job names are `Jev server (ubuntu-latest, Python 3.11)`,
+The retained workflow job names include `Jev server (ubuntu-latest, Python 3.11)`,
 `Jev server (macos-latest, Python 3.12)`, `Embedded router (ubuntu-latest)`,
 `Embedded router (macos-latest)` and
 `Codex app-server contract (0.155.0-alpha.9.2)`. Exclude
@@ -59,8 +58,9 @@ documented owner merge policy apply independently of those unavailable settings.
 - Windows portability feedback is manual-only; keep its full assertions and
   visible failure results without launching it on every PR or `main` push.
 - Both workflows cancel superseded runs for the same PR/ref.
-- Keep the five product jobs and their test commands; do not bypass required
-  checks to compensate for an account billing restriction.
+- Repository Actions are disabled by owner authorization. Keep their job
+  definitions and all local assertions; do not report unstarted CI as passing
+  or re-enable Actions without an explicit owner request.
 - CI run `37048612646` and advisory run `37048612592` did not start tests.
   GitHub reported: `The job was not started because recent account payments
   have failed or your spending limit needs to be increased. Please check the
@@ -81,3 +81,9 @@ changing visibility alone resolves the previously observed HTTP 403. Never put
 raw access tokens in README files, image URLs, commits or chat. This note is a
 future release checklist item, not authorization to change repository visibility
 or create credentials automatically.
+
+## Published previews
+
+- [v0.1.0-preview.1 notes](release/v0.1.0-preview.1.md) — first private macOS
+  preview, source `cf7c6c0b2ced07aa40b8c39f777c9dec8b9a18f2`.
+  [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.1).
