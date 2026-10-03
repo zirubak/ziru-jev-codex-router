@@ -1,5 +1,7 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
+다음 릴리즈 초안: [v0.1.0-preview.2 변경 사항과 한계](docs/release/v0.1.0-preview.2.md). 초안 준비 상태이며 게시나 최신 소스의 전체 실제 설치 완료를 뜻하지 않습니다.
+
 # ZIRU Jev Codex Router
 
 **Codex가 작업 단계에 맞는 모델과 추론 깊이를 선택하도록 하세요.**
