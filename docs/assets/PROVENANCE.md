@@ -91,3 +91,15 @@ The key-page link was checked against TypeSafe's official quick-start Markdown
 at https://docs.typesafe.ai/introduction/quickstart.md on 2026-10-02.
 Console button labels were not independently verified; the guide avoids
 assuming their exact wording.
+
+## Auto/Manual comic
+
+`auto-manual-comic.png` is a four-panel English-language companion to the
+existing `key-setup-comic.png`, using the same caveman character and cave
+setting. Panel one delegates model and effort in Auto; panel two illustrates
+context-dependent selection; panel three sets Manual effort to High; panel
+four preserves High while model selection remains automatic.
+
+The illustration is not a product screenshot, a guaranteed route, or measured
+performance evidence. Its lettering and mode semantics were visually checked.
+Dimensions and SHA256 are recorded in `manifest.json`.

@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
-Prepared next preview: [v0.1.0-preview.2 changes and limits](docs/release/v0.1.0-preview.2.md). This is a release draft, not a publication or live-install claim.
+Current prerelease: [v0.1.0-preview.2 changes and limits](docs/release/v0.1.0-preview.2.md). [Published release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.2). See the notes for installation and validation limits.
 
 # ZIRU Jev Codex Router
 
@@ -41,6 +41,102 @@ The optional Desktop integration adds these entries to the model menu:
 | --- | --- | --- |
 | Jev Codex Router Auto | Jev chooses | Jev chooses; the displayed slider is ignored |
 | Jev Codex Router Manual | Jev chooses a compatible model | Your selected low, medium, high, xhigh or max |
+
+### The one thing to remember
+
+**Auto delegates both the model and thinking depth to Jev. Manual lets you set the thinking depth.**
+*Effort* controls how deeply the model reasons before answering. Higher effort
+does not guarantee a correct answer or a larger model.
+
+![The README caveman delegates model and effort in Auto, then sets High effort in Manual while Jev still chooses the model.](docs/assets/auto-manual-comic.png)
+
+*Illustrative routes. Manual sets effort, not the model; actual choices depend on context.*
+
+### Auto: describe the work
+
+Choose **Jev Codex Router Auto** and ask normally. Jev considers difficulty,
+failure risk and remaining work, then chooses Luna, Sol or Astra together with
+an effort from low through max. The choice can change on continuations after tools.
+
+“Change this button label” and “Find and fix this login-permission bug” need
+different judgments. Auto chooses a combination for the work. These are examples,
+not fixed task-to-model rules or guaranteed routes.
+
+**The slider can show High while Auto actually runs low.** Auto ignores the
+slider's effort setting and makes its own choice. Start with Auto when you want
+to describe the task without managing reasoning depth yourself.
+
+### Manual: delegate the model, set the depth
+
+Choose **Jev Codex Router Manual**, set an effort, then send your request.
+Jev selects a model supporting that effort; execution preserves your selected
+effort. **Manual does not mean manually picking Luna, Sol or Astra.**
+
+| Effort | Example reason to choose it |
+| --- | --- |
+| low / Light | Keep reasoning light for a small, clearly scoped task |
+| medium | Keep a fixed middle depth while working |
+| high | Request deeper reasoning for investigation or review |
+| xhigh / max | Explicitly request a higher depth for work you judge needs it |
+
+These are selection examples, not performance or cost guarantees. Higher effort
+can increase reasoning tokens or waiting time. If Max is missing, check Settings
+→ Configuration → Codex → Model features → Available reasoning efforts on a
+supported app build.
+
+For “Investigate this bug with High effort,” choose **Manual + High**. A Sol
+selection runs Sol/high; an Astra selection runs Astra/high. **High does not pin
+Astra.** Wait for the current response to finish before changing effort for the
+next request. To pin a model yourself, choose its official model entry instead.
+
+### Examples: which mode should I choose?
+
+**Example 1 — a small edit, without managing settings**
+
+Select **Auto**, then send:
+
+> Change the Save button label to Save changes. Keep the existing behavior and check the layout.
+
+You specify the outcome; Jev chooses both model and effort. An illustrative
+reply label might be `[gpt-6-luna / low]`, but the context can lead to another
+choice. Leaving the slider at High does not force High in Auto.
+
+**Example 2 — investigate a bug at a depth you choose**
+
+Select **Manual**, set the effort slider to **High**, then send:
+
+> Find why this login request sometimes returns 401. Reproduce the failure, fix its cause, and run the affected tests.
+
+Jev still chooses the model. If it chooses Sol, the route is Sol/high; if it
+chooses Astra, it is Astra/high. Subsequent tool continuations can change models,
+while the effort you selected remains High. Typing “High” in a prompt is not the
+Manual setting: choose the mode and use the effort control before sending.
+
+**Example 3 — the same request, two different choices**
+
+> Review this patch for permission bugs and missing regression coverage.
+
+| What you select | Who chooses the model? | Who chooses effort? |
+| --- | --- | --- |
+| Auto, even with High visible in the slider | Jev, under the route policy | Jev; actual effort may differ from the slider |
+| Manual + High | Jev, under the route policy | You; the selected effort stays High |
+
+Use Auto when you want the router to adjust depth as the work changes. Use
+Manual when keeping a particular reasoning depth matters to you. A mandatory
+review policy can constrain the model in either mode; Manual does not remove
+that policy or choose a fixed model. High is a setting, not proof that a review
+was performed or that the result is correct.
+
+These labels and scenarios explain the controls; they are not recorded runs,
+fixed route promises or measured quality/cost comparisons.
+
+### Common questions
+
+- Moving the slider in Auto does not override Jev. Select Manual to apply it.
+- Manual can change models while keeping your effort. An incompatible route is not silently served at a lower effort.
+- Auto's technical fallback for Jev communication/validation errors is Sol/high. Manual retains your selected effort. Kill switch, shadow and quota policies are separate.
+- Neither mode automatically enables Ultra. An Ultra recommendation does not grant delegation authority or replace your choice.
+- The response's `[model / effort]` label describes the selected route. UI settings or a model's self-description alone do not establish execution identity. Missing or conflicting returned metadata prevents treating the label as backend-confirmed identity.
 
 From your stable installation checkout, run `./install.sh --desktop`. Save your
 work, quit Codex yourself, then open the generated launcher:
@@ -235,7 +331,7 @@ small clerical edits can stay lightweight. Parallel review is conditional on
 the caller's tools and authority, and the router does not launch agents or
 certify their work. See [adaptive planning validation](docs/release/adaptive-planning.md).
 
-**If Jev has a technical failure**, or the key/task is missing, execution falls back to **GPT-6.1 Sol / high / Standard**. A Sol/high label alone cannot distinguish a normal choice from fallback; the local diagnostics provide that detail. Kill switch, shadow mode and exhausted model quota have [separate handling](server/INSTALL.md).
+**If Jev has a technical failure**, or the key/task is missing, Auto falls back to **GPT-6.1 Sol / high / Standard**. Manual preserves your selected effort on its technical route. A Sol/high label alone cannot distinguish a normal choice from fallback; the local diagnostics provide that detail. Kill switch, shadow mode and exhausted model quota have [separate handling](server/INSTALL.md).
 
 **Ultra requires your choice.** When independent parallel work could help, the router can recommend selecting a native Sol or Astra Ultra option. The current advisory is in Korean. It does not switch modes or enable delegation for you; client support and delegation permission are still required. Ultra can use more tokens.
 
