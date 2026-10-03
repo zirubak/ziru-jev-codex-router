@@ -7,6 +7,10 @@ the portable embedded router tests.
 
 - Model policy and Jev decisions belong to `server/`; shared auth, transport and
   client integration belong to `router/`. Preserve full canonical replay.
+- Native Plan mode prioritizes an implementation-ready plan using adaptive
+  capability, depth and bounded review recommendations. Do not replace this
+  with a blanket Astra/max rule. Review guidance never grants delegation
+  authority or establishes that an independent review occurred.
 - Use TypeSafe's direct API only. Never print, commit or republish credentials,
   raw transcripts, decision logs or installation backups.
 - Test behavior changes RED → GREEN on isolated homes before implementation.
@@ -18,6 +22,9 @@ the portable embedded router tests.
   not a merge gate. Keep the local checks and integrated review above; merge
   reviewed candidates after those checks pass. Do not re-enable Actions
   without an explicit owner request.
+- Preserve advisory Windows assertions and failure diagnostics. Windows
+  product support remains unverified; its workflow does not authorize
+  re-enabling repository Actions.
 - One integrated code and Python specialist review of changed behavior is
   required. Reviewers are read-only; the owner stages and commits.
 - Installation uses the root transaction. Preserve unrelated settings and

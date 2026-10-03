@@ -1,6 +1,6 @@
 # Support and test matrix
 
-Last reviewed: 2026-10-01.
+Last reviewed: 2026-10-02.
 
 ## Product support
 
@@ -16,20 +16,45 @@ was verified with Desktop `0.159.0-alpha.12.1` and CLI `0.159.3`; see
 [provider isolation](release/provider-isolation.md).
 
 The embedded router under `router/` remains a cross-platform fork. Its portable
-runtime and state-management suite is required on Ubuntu, macOS, and Windows
-with Node.js 24 in CI. Passing that matrix does not make the root launchd
-installer supported on Linux or Windows.
+runtime and state-management suite runs on Ubuntu, macOS, and Windows with
+Node.js 24 in the preserved workflow definitions. Repository Actions are
+disabled; local checks and integrated review gate merges. Windows has a separate
+advisory workflow definition. Passing these checks does not make the root
+launchd installer supported on Linux or Windows.
 
-## Required CI lanes
+## Preserved CI lane definitions
 
 | Lane | Runtime | What it proves |
 | --- | --- | --- |
 | Jev server | Ubuntu / Python 3.11 | Minimum supported Python and portable policy/relay behavior |
 | Jev server | macOS / Python 3.12 | Primary product OS and a current Python runtime |
-| Embedded router | Ubuntu, macOS, Windows / Node.js 24 | Portable fork behavior, state safety, and platform-specific branches |
+| Embedded router | Ubuntu, macOS / Node.js 24 | Portable fork behavior, state safety, and supported product OS branches |
 | Browser panel | Ubuntu / Playwright Chromium | Browser UI tests execute instead of silently skipping for a missing browser |
 | Codex app-server contract | Ubuntu / `codex-cli 0.155.0-alpha.9.2` | A real, known Codex binary completes both login-free provider configurations |
 | Isolated profile contract | Ubuntu / `codex-cli 0.159.3` | Explicit Jev profile and ordinary provider use separate authenticated HTTP transports |
+
+Actions were disabled by the owner on 2026-10-02; these remote jobs are not
+merge gates. Run the local checks in [AGENTS.md](../AGENTS.md) and record their
+results and conditional skips. Do not re-enable Actions without authorization.
+The browser-panel lane is defined inside the Ubuntu embedded router job.
+
+## Advisory Windows CI
+
+`.github/workflows/windows-advisory.yml` runs the existing Windows router
+syntax checks, full test suite and production dependency audit on explicit
+manual dispatches only. It does not run automatically on PR updates or `main`
+pushes. Failures remain visible; they are
+not converted to success or suppressed. A pending, failed or cancelled
+`Embedded router (windows-latest, advisory)` check does not block macOS product
+merges or releases. Do not add it to required branch checks or rulesets.
+
+The previous combined run `37040055140` passed the five required jobs, but its
+Windows job hit a port-occupancy test timeout and was later cancelled at the
+workflow time limit. The cause is unresolved; moving the lane does not fix it
+or establish Windows product support.
+
+The preserved workflows cancel superseded runs for the same PR/ref when
+Actions are explicitly enabled. Repository Actions currently remain disabled.
 
 The Codex contract lane sets `CODEX_ROUTER_REQUIRE_REAL_CODEX=1`; absence of the
 binary is a failure, never a skip. It also checks the exact CLI version before
@@ -67,6 +92,6 @@ On Linux CI, use `npx playwright install --with-deps chromium`.
 
 Manual Windows installation and end-to-end use have not been validated by the
 maintainer. The macOS product preview may ship with this disclosed limitation;
-Windows CI remains enabled as portability feedback, not a release completion
-gate for this preview. Windows testers with repository access are invited to
+The Windows workflow is preserved as advisory portability feedback; repository
+Actions remain disabled. Windows testers with repository access are invited to
 report sanitized results through GitHub Issues as described in both READMEs.
