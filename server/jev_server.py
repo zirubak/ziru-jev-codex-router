@@ -2056,7 +2056,22 @@ class Handler(BaseHTTPRequestHandler):
             elif inherited not in EFFORTS:
                 effort = FALLBACK_EFFORT
 
+        # External adapters have no qualified Responses-lite transport. Never
+        # let missing top-level tools turn its in-history declarations into an
+        # apparently tool-free fallback request.
+        lite_replay = (
+            self.headers.get("x-openai-internal-codex-responses-lite") == "true"
+            or any(isinstance(item, dict) and item.get("type") == "additional_tools"
+                   for item in (payload.get("input") if isinstance(payload.get("input"), list) else []))
+        )
+        lite_quota_error = (
+            "native Codex usage is exhausted; configured external fallbacks do not "
+            "support the Responses-lite replay contract"
+        )
+
         def quota_candidates():
+            if lite_replay:
+                return []
             return (fallback_candidates(model, payload, user_effort=selection.user_effort)
                     if selection.mode == "manual" else fallback_candidates(model, payload))
 
@@ -2168,7 +2183,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             unwritten = json.dumps({
                 "error": {
-                    "message": (f"native Codex usage is exhausted and no configured fallback can honor manual effort {selection.user_effort}"
+                    "message": (lite_quota_error if lite_replay else
+                                f"native Codex usage is exhausted and no configured fallback can honor manual effort {selection.user_effort}"
                                 if selection.mode == "manual" else
                                 "native Codex usage is exhausted and no compatible configured fallback is available")
                 }
@@ -2200,9 +2216,10 @@ class Handler(BaseHTTPRequestHandler):
                     exact_route=True)
             else:
                 gate = f"codex_dry(no_candidate):{native_model}"
-                if selection.mode == "manual":
+                if lite_replay or selection.mode == "manual":
                     status, ctype = 503, "application/json"
                     unwritten = json.dumps({"error": {"message":
+                        lite_quota_error if lite_replay else
                         f"no configured fallback can honor manual effort {selection.user_effort}"
                     }}).encode("utf-8")
         elif status == 200 and not dry_reason and model in TIERS and os.path.exists(DRY_STATE_PATH):

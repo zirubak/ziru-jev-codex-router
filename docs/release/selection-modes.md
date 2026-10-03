@@ -33,19 +33,18 @@ services; the cause of that first bootstrap failure remains unproven. No retry
 loop was added to hide it. Successful final installation and repeat-install
 checks are separate evidence from that failure-path limitation.
 
-## External acceptance gates
+## Updated acceptance and merge policy (2026-10-02)
 
-Actual native Desktop menu rendering remains unverified: this session has no
-enabled native-app control. Jev is isolated behind `codex -p jev`; the normal
-Desktop picker retains official models. The accepted native menu criterion is
-pending and has not been waived. The user performs any final Desktop restart.
-Catalog and app-server protocol checks cannot replace visual acceptance.
+The owner confirmed Auto/Manual switching and the effort slider in a fresh
+Desktop session. This is owner-reported UI acceptance; the agent did not operate
+the native UI. The earlier local HTTP and native protocol evidence remains
+separate from that confirmation. The user performs any final Desktop restart.
 
-GitHub runs 37049064018 and 37063332785 report that jobs did not start because
-recent account payments failed or the spending limit needs to increase. Required
-CI remains enabled and is not bypassed. Billing is not changed by this release.
-Windows remains manual advisory. Publication may proceed as a draft; merge
-requires the existing CI and product acceptance gates.
+Repository Actions were subsequently disabled by the owner. Local checks and
+integrated review in [AGENTS.md](../../AGENTS.md) gate merges; historical jobs
+that did not start are not successful CI. No billing changes or Actions
+reactivation are authorized by this update. The optional native bridge is
+build-specific, and Windows product support remains unverified.
 
 ## Learning judgment
 

@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-02",
+  "base": "6e1e5284a9086957568e85bbc3c20968f20d8b7f",
+  "files": {
+    "server/jev_server.py": "b3de9b5ac2afa3f2c387e6feb2e2861cb5d065652304e3b75c862502458833ef",
+    "server/test_selection_mode.py": "22f00114e2b54948392dd9813182b7fa78c5a2a3d90c015ddbb62ba790e53805"
+  },
+  "checks": {
+    "http_red": "2 tests, 5 failing assertions before correction",
+    "http_green": "2 passed",
+    "python": "258 passed",
+    "node": "4479 passed, 32 conditional skips, zero failures",
+    "syntax": "PASS",
+    "offline_dossiers": 16,
+    "production_dependency_audit": "zero vulnerabilities",
+    "links_whitespace": "PASS"
+  },
+  "review": "APPROVE; affected code/Python correction reviewed on these exact hashes; unchanged broader review evidence retained",
+  "evidence_reuse": "All 1361 tracked server/router/poc/installer input files equal the tested integration candidate",
+  "acceptance": "Owner confirmed fresh Desktop Auto/Manual and effort slider behavior",
+  "limits": [
+    "Responses-lite external quota fallback is unsupported; explicit HTTP503 before external execution",
+    "Actual official Ultra inference/delegation remains unverified",
+    "No live installation or app/service restart in this change",
+    "GitHub Actions disabled by owner; no remote CI pass claimed"
+  ],
+  "learning": "No durable learning"
+}

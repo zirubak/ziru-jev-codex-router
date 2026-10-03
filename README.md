@@ -28,8 +28,8 @@ See [provider isolation](docs/release/provider-isolation.md) for configuration,
 recovery and verification details.
 
 An optional, build-specific [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
-keeps the existing effort menu and separates Auto/Manual by name. Signed-in
-native picker acceptance is still pending; ordinary installation does not enable it.
+keeps the existing effort menu and separates Auto/Manual by name. The owner confirmed Auto/Manual switching and the effort slider in a fresh
+Desktop session on 2026-10-02. Ordinary installation does not enable this bridge.
 
 ## Install
 
