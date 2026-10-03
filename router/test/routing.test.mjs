@@ -9411,6 +9411,165 @@ test("a long routed conversation is replayed as a window instead of in full", as
   }
 });
 
+async function jevCollaborationFixture(t, handler, { external = false, cooled = false } = {}) {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "jev-collaboration-"));
+  const nativeCalls = [];
+  const native = await mockServer(async (request, response) => {
+    nativeCalls.push(await bodyJson(request));
+    if (external) {
+      json(response, 200, { output: [{ type: "function_call", name: "relay_external_agent_payload",
+        arguments: JSON.stringify({ payload: "Decrypted child task." }) }] });
+    } else json(response, 400, { error: { code: "unexpected_payload_relay" } });
+  });
+  const gateway = await mockServer(handler);
+  const providers = path.join(directory, "generic-providers.json");
+  const models = path.join(directory, "user-models.json");
+  writeFileSync(providers, JSON.stringify({ version: 1, providers: [{
+    id: "jev", displayName: "Jev fixture", baseUrl: `http://127.0.0.1:${gateway.port}/v1`,
+    adapter: "openai-responses", headers: {}, allowPrivate: true, enabled: true,
+  }, ...(external ? [{ id: "external-fixture", displayName: "External fixture",
+    baseUrl: `http://127.0.0.1:${gateway.port}/v1`, adapter: "openai-responses",
+    headers: {}, allowPrivate: true, enabled: true }] : [])] }));
+  const fixtures = ["auto", "manual"].map((mode) => ({
+    slug: `jev/${mode}`, gatewayModel: `jev-${mode}`, upstreamModel: mode,
+    provider: "jev", listed: true, displayName: "Jev fixture", description: "Jev collaboration fixture.", compHash: `jev-${mode}-test`,
+    priority: 95, defaultEffort: "high", reasoningLevels: [{ effort: "high", description: "High" }],
+    contextWindow: 258400, autoCompact: 219640, inputModalities: ["text", "image"],
+  }));
+  if (external) {
+    fixtures.push({ ...fixtures[0], slug: "external-fixture/model", gatewayModel: "external-model",
+      provider: "external-fixture", upstreamModel: "model" });
+    writeFileSync(path.join(directory, "failover.json"), JSON.stringify({
+      version: 1, enabled: true, chain: ["external-fixture/model"],
+    }));
+    if (cooled) writeFileSync(path.join(directory, "provider-cooldowns.json"), JSON.stringify({
+      jev: { until: new Date(Date.now() + 60_000).toISOString(), reason: "rate_limited" },
+    }));
+  }
+  writeFileSync(models, JSON.stringify({ version: 1, models: fixtures }));
+  const port = await openPort();
+  const router = run("router.mjs", {
+    CODEX_ROUTER_PORT: String(port), CODEX_ROUTER_QUIET: "1",
+    MODEL_ROUTER_STATE_DIR: directory, MODEL_ROUTER_GENERIC_PROVIDERS: providers,
+    MODEL_ROUTER_USER_MODELS: models,
+    CODEX_NATIVE_BASE_URL: `http://127.0.0.1:${native.port}`,
+    CODEX_ROUTER_GATEWAY_BASE_URL: `http://127.0.0.1:${gateway.port}/v1`,
+  });
+  t.after(async () => {
+    await stopChild(router);
+    await closeServer(native.server);
+    await closeServer(gateway.server);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  await waitFor(`${routerBase(port)}/models`, router);
+  return { nativeCalls, async request(body) {
+    return fetch(`${routerBase(port)}/responses`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer SYNTHETIC_NATIVE_SESSION" },
+      body: JSON.stringify(body),
+    });
+  } };
+}
+
+test("Jev collaboration preserves native child inheritance across HTTP", async (t) => {
+  let argumentsText;
+  const fixture = await jevCollaborationFixture(t, async (_request, response) => {
+    const item = { type: "function_call", namespace: "collaboration", name: "spawn_agent",
+      call_id: "call_child", arguments: argumentsText };
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    for (const event of [
+      { type: "response.output_item.done", item },
+      { type: "response.completed", response: { id: "resp_child", status: "completed", output: [item] } },
+    ]) response.write(`data: ${JSON.stringify(event)}\n\n`);
+    response.end();
+  });
+  for (const mode of ["auto", "manual"]) {
+    for (const args of [
+      { task_name: "child", message: "Return the marker." },
+      { task_name: "child", message: "Return the marker.", fork_turns: "all" },
+      { task_name: "child", message: "Return the marker.", model: `jev/${mode}` },
+      { task_name: "child", message: "Return the marker.", model: "gpt-6.1-sol", reasoning_effort: "high", fork_turns: "none" },
+    ]) {
+      argumentsText = JSON.stringify(args);
+      const response = await fixture.request({ model: `jev/${mode}`, input: "Delegate the marker.", stream: true,
+        tools: [{ type: "namespace", name: "collaboration", tools: [{ type: "function", name: "spawn_agent",
+          parameters: { type: "object", properties: { model: { type: "string" } } } }] }] });
+      assert.equal(response.status, 200);
+      const events = (await response.text()).split("\n").filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)));
+      const actual = JSON.parse(events.find((event) => event.type === "response.output_item.done").item.arguments);
+      const expected = { ...args };
+      if (expected.model === `jev/${mode}`) delete expected.model;
+      assert.deepEqual(actual, expected, `${mode}: ${JSON.stringify(args)}`);
+      assert.deepEqual(JSON.parse(events.at(-1).response.output[0].arguments), expected);
+    }
+  }
+});
+
+test("Jev collaboration forwards encrypted handoffs without a plaintext relay", async (t) => {
+  const bodies = [];
+  const fixture = await jevCollaborationFixture(t, async (request, response) => {
+    bodies.push(await bodyJson(request));
+    json(response, 200, { id: "resp_handoff", output: [{ type: "message", role: "assistant", content: "ok" }] });
+  });
+  for (const mode of ["auto", "manual"]) {
+    const input = [{ type: "agent_message", author: "/root", recipient: "/root/child", content: [
+      { type: "input_text", text: "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n" },
+      { type: "encrypted_content", encrypted_content: "gAAAAA-native-child-payload=" },
+    ] }];
+    const response = await fixture.request({ model: `jev/${mode}`, stream: false, input });
+    assert.equal(response.status, 200, await response.text());
+    assert.deepEqual(bodies.at(-1).input, input);
+    assert.equal(fixture.nativeCalls.length, 0, "Native execution owns decryption, not an extra relay model");
+  }
+});
+
+test("Jev collaboration consumes V2 compaction triggers before native summary", async (t) => {
+  const bodies = [];
+  const fixture = await jevCollaborationFixture(t, async (request, response) => {
+    bodies.push(await bodyJson(request));
+    json(response, 200, { output: [{ type: "message", role: "assistant", content: "Preserve the child task." }] });
+  });
+  for (const mode of ["auto", "manual"]) {
+    const input = [{ type: "agent_message", author: "/root", recipient: "/root/child", content: [
+      { type: "input_text", text: "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n" },
+      { type: "encrypted_content", encrypted_content: "gAAAAA-native-child-payload=" },
+    ] }, { type: "compaction_trigger" }];
+    const response = await fixture.request({ model: `jev/${mode}`, stream: false, input });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).output[0].type, "compaction");
+    assert.ok(!bodies.at(-1).input.some(item => item.type === "compaction_trigger"));
+    assert.deepEqual(bodies.at(-1).input[0], input[0]);
+    assert.equal(fixture.nativeCalls.length, 0);
+  }
+});
+
+for (const compact of [false, true]) {
+  for (const cooled of [false, true]) {
+    test(`Jev collaboration normalizes external failover compact=${compact} cooled=${cooled}`, async (t) => {
+      const bodies = [];
+      const fixture = await jevCollaborationFixture(t, async (request, response) => {
+        const body = await bodyJson(request);
+        bodies.push(body);
+        if (body.model.startsWith("jev-")) {
+          json(response, 429, { error: { type: "insufficient_quota", message: "You have exceeded your current quota." } });
+        } else json(response, 200, { output: [{ type: "message", role: "assistant", content: "Child task received." }] });
+      }, { external: true, cooled });
+      const input = [{ type: "agent_message", author: "/root", recipient: "/root/child", content: [
+        { type: "input_text", text: "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n" },
+        { type: "encrypted_content", encrypted_content: "gAAAAA-native-child-payload=" },
+      ] }, ...(compact ? [{ type: "compaction_trigger" }] : [])];
+      const response = await fixture.request({ model: "jev/auto", stream: false, input });
+      assert.equal(response.status, 200, await response.text());
+      const external = bodies.filter(body => body.model === "external-model");
+      assert.equal(external.length, 1);
+      assert.equal(fixture.nativeCalls.length, 1);
+      assert.ok(!JSON.stringify(external[0].input).includes("gAAAAA-native-child-payload="));
+      assert.ok(JSON.stringify(external[0].input).includes("Decrypted child task."));
+      if (!compact) assert.equal(bodies.filter(body => body.model.startsWith("jev-")).length, cooled ? 0 : 1);
+    });
+  }
+}
+
 for (const [mode, desktop] of [["auto", false], ["manual", false], ["auto", true], ["manual", true]]) {
 test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete canonical replay for its executing model`, async () => {
   const gatewayBodies = [];
