@@ -423,6 +423,75 @@ Jev calls go directly to `https://api.typesafe.ai/v1/systemone`, never through V
 
 Start with `bin/jev-codex-router router doctor` if the model is missing or requests fail. The [operations guide](server/INSTALL.md) covers diagnosis, updates, disabling Jev and full removal, including shared-service precautions and installation recovery.
 
+### Something went wrong? Ask Codex to prepare an issue
+
+If installation, routing or Auto/Manual behaves unexpectedly, copy the prompt
+below into Codex from your installation checkout. Replace the bracketed symptom
+with what happened. It asks for the information needed to reproduce the problem
+without uploading your private conversations or credentials.
+
+```text
+Help me report a ZIRU Jev Codex Router problem to:
+https://github.com/zirubak/ziru-jev-codex-router/issues
+
+My symptom: [What happened? What did I expect instead?]
+
+Prepare a useful, sanitized GitHub issue. Start with diagnosis, not fixes.
+
+1. Identify the installation checkout and which checkout the running services
+   actually use. Report their release/commit and whether relevant local changes
+   exist. Do not assume the current folder is the installed runtime. Never paste
+   a private patch, remote URL containing credentials, or personal filesystem path.
+2. Record OS/version, CPU architecture, Node.js and Python versions, Codex CLI
+   version, and Desktop version/build when applicable. Record the incident time
+   with timezone. Use "unknown" or "not checked" where evidence is unavailable.
+3. Collect read-only diagnostics from the installation checkout:
+   - node --version
+   - python3 --version
+   - codex --version
+   - git rev-parse HEAD
+   - bin/jev-codex-router router status
+   - bin/jev-codex-router router doctor
+   Run only available commands; record exit codes and relevant sanitized errors.
+   Do not treat a skipped or failed check as passing.
+4. Ask only for missing details needed for a minimal reproduction. Include the
+   launch path (original app, Jev launcher, or codex -p jev), Auto/Manual/official
+   selection, selected effort, and the sequence of mode/effort changes. Record
+   whether this was a fresh or existing chat, after an update/restart, or after
+   tools, compaction, collaboration or quota exhaustion. Distinguish the displayed
+   slider/label from execution metadata; do not infer the model from its own words.
+5. Prefer a small synthetic request that reproduces the failure. Separate expected
+   behavior from observed behavior, include numbered steps and frequency, and
+   report the exact sanitized error or HTTP status if known. Correlate existing
+   request/turn/message IDs when available; a timestamp alone is not proof.
+   Do not rerun real inference, smoke tests, or paid calls without asking me first.
+6. If necessary, inspect only a bounded local error excerpt around this incident.
+   Keep raw logs local. Summarize relevant error codes, policy version, mode,
+   model/effort and terminal status only when actually observed. Exclude prompts,
+   tool inputs/results, repository content, account identifiers and credentials.
+   Never read or upload .env, auth.json, credential stores, session exports,
+   installation backups or complete configs. Redact personal paths and private
+   endpoints. Use a cropped, redacted screenshot only if it explains a UI defect.
+7. Do not modify code/configs, update/reinstall, restart services/Desktop, switch
+   providers, enable debug capture, or delete files while gathering this report.
+   List prior attempted fixes and outcomes if known. Mark root-cause ideas as
+   hypotheses; do not present them as verified explanations.
+8. Search accessible existing issues for this symptom using sanitized terms.
+   Link a likely duplicate, or state that the search was unavailable. Draft a
+   concise title and a body with: Summary; Environment and source/runtime versions;
+   Steps to reproduce; Expected vs actual; Sanitized diagnostics; Attempts and
+   outcomes; Unknowns. Distinguish fixture, live, and user-reported evidence.
+9. Show me the sanitized title/body and any attachments for review. Ask for my
+   approval before submitting. After approval, create the issue with the available
+   GitHub tool or gh CLI and return its URL. If posting is unavailable, give me
+   the copy-ready report and issue link; never claim an issue was created.
+```
+
+Review the proposed report before posting. Even in a private repository, leave
+out keys, authentication files, raw logs, conversations and installation backups.
+For a suspected security vulnerability, follow [SECURITY.md](SECURITY.md) rather
+than posting sensitive exploit details in an ordinary issue.
+
 | Guide | Contents |
 | --- | --- |
 | [Operations](server/INSTALL.md) | Install, diagnose, update and uninstall |
