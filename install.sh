@@ -80,6 +80,12 @@ if [ "$mode" = prepare ]; then
   exit 0
 fi
 
+# Reject unsupported Desktop before dependency preparation or private-state writes.
+# The launcher installation rechecks inside the transaction in case the app updates.
+if [ "$desktop" = 1 ]; then
+  python3 "$repo_dir/server/install_desktop.py" --check
+fi
+
 # Dependency preparation uses a separate home and never activates client routing.
 "$repo_dir/install.sh" --prepare-only
 transaction=$repo_dir/server/install_transaction.py

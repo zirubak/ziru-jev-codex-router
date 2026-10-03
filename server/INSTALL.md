@@ -70,6 +70,12 @@ the source tree, so updates should not touch them. Verify anyway:
 
 ## Troubleshooting
 
+- **Unverified Desktop build**: `--desktop` refuses an unknown app before install
+  side effects. See the [support matrix and update qualification](../docs/release/native-desktop-bridge.md#compatibility-and-app-updates).
+  Use root `./install.sh` without `--desktop`, then `codex -p jev` for CLI routing;
+  retain ordinary Desktop. Do not bypass hash checks. A concurrent app update
+  detected by the final installation check still triggers transaction rollback.
+
 - **`invalid_responses_response` in router logs / “unavailable right now” in
   Codex**: the API forwarder parsed our reply as JSON instead of SSE. The server
   forces `Content-Type: text/event-stream` on streamed replies for exactly this

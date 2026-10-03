@@ -27,7 +27,11 @@ def verify_app(app: Path) -> dict[str, str]:
         with file.open("rb") as artifact:
             hashes[key] = hashlib.file_digest(artifact, "sha256").hexdigest()
     if hashes != SUPPORTED_HASHES:
-        raise ValueError("Unverified Desktop build; keep ordinary Codex until compatibility is tested")
+        raise ValueError(
+            "Unverified Desktop build; keep ordinary Codex until compatibility is tested. "
+            "Verified adapter: Desktop 12776 / bundled CLI 0.159.0-alpha.12.1. "
+            "For CLI routing, run ./install.sh without --desktop, then codex -p jev. "
+            "Do not replace compatibility hashes without native validation.")
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)],
                    check=True, capture_output=True, timeout=60)
     return hashes
@@ -93,7 +97,16 @@ def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Pa
 
 
 def main() -> None:
+    import argparse
     import shutil
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true",
+                        help="verify Desktop compatibility without changing installation state")
+    args = parser.parse_args()
+    if args.check:
+        verify_app(Path("/Applications/ChatGPT.app"))
+        print("Desktop compatibility verified; no installation state changed.")
+        return
     from install_transaction import runtime_paths
     _, codex, state = runtime_paths()
     source = Path(__file__).resolve().parent.parent

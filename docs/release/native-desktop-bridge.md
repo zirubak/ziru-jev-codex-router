@@ -115,3 +115,41 @@ return HTTP 503 with an explicit contract error before external execution.
 Healthy native calls preserve their complete replay. Standard Responses
 profile calls retain the existing compatible quota fallback. No native tools
 are silently dropped or translated into an unverified external schema.
+
+## Compatibility and app updates
+
+| Desktop build | Bundled CLI | Adapter support |
+| --- | --- | --- |
+| 12776 | 0.159.0-alpha.12.1 | Verified artifact hashes and native checks |
+| 12947 | 0.160.0 | Reported in issue #16; unverified, installation refused |
+| Other artifact hashes | Any | Unverified, installation refused |
+
+Build numbers describe the tested environment; exact app.asar and Mach-O hashes
+remain the compatibility gate. The current readback in [issue #16](https://github.com/zirubak/ziru-jev-codex-router/issues/16)
+does not establish the app build at each earlier failure.
+
+`./install.sh --desktop` checks compatibility before dependency preparation,
+transaction backups, configuration writes, service starts or live smoke requests.
+Installation checks again inside the transaction; if the app changes after the
+first check, the existing rollback safeguards still apply. Launch and respawn
+checks remain unchanged.
+
+You can check compatibility without installing:
+
+```sh
+python3 server/install_desktop.py --check
+```
+
+If your app is unsupported, retain ordinary Desktop. For the separate CLI route,
+use the root `./install.sh` without `--desktop`, then `codex -p jev`; Manual uses
+`codex -p jev -m jev/manual -c model_reasoning_effort=high`. This path requires
+the normal installation prerequisites and a CLI with profile-file support. A
+successful installer smoke does not prove interactive CLI or Desktop execution,
+or distinguish semantic Jev selection from technical fallback.
+
+To qualify an updated app, maintainers must verify its signature, inspect native
+protocol and picker changes, run the adapter regression checks, and verify actual
+Auto/Manual requests, official-provider isolation, tools, permissions, history,
+and native collaboration on that build. Only then should reviewed hashes be
+published together with build/CLI versions and acceptance evidence. Copying new
+hashes alone does not establish support. Build 12947 remains unverified here.

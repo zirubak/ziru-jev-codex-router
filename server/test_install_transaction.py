@@ -180,6 +180,7 @@ if sys.argv[1:3]==['service','restart']:
         (desktop / "manifest.json").write_text("original launcher state")
         (self.repo / "server/install_desktop.py").write_text(
             "import os,pathlib,sys\n"
+            "if '--check' in sys.argv: sys.exit(0)\n"
             "root=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])/'desktop'\n"
             "(root/'manifest.json').write_text('failed candidate')\n"
             "sys.exit(9)\n")
@@ -188,6 +189,32 @@ if sys.argv[1:3]==['service','restart']:
         self.assertEqual(result.returncode, 9, result.stderr)
         self.assertEqual(self.config.read_bytes(), self.original)
         self.assertEqual((desktop / "manifest.json").read_text(), "original launcher state")
+
+    def test_supported_desktop_checks_before_setup_and_rechecks_after_smoke(self) -> None:
+        (self.repo / "server/install_desktop.py").write_text(
+            "import os,sys\n"
+            "with open(os.environ['FIXTURE_CALLS'], 'a') as log:\n"
+            " log.write('desktop-check\\n' if '--check' in sys.argv else 'desktop-install\\n')\n")
+        result = subprocess.run(["sh", str(self.repo / "install.sh"), "--desktop"],
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = (self.base / "calls").read_text().splitlines()
+        self.assertEqual(calls[0], "desktop-check")
+        self.assertEqual(calls[-1], "desktop-install")
+
+    def test_unknown_desktop_is_rejected_before_transaction_or_services(self) -> None:
+        (self.repo / "server/install_desktop.py").write_text(
+            "import sys\nprint('Unverified Desktop build', file=sys.stderr)\nsys.exit(9)\n")
+        before = {str(p.relative_to(self.codex_home)): p.read_bytes()
+                  for p in self.codex_home.rglob("*") if p.is_file()}
+        result = subprocess.run(["sh", str(self.repo / "install.sh"), "--desktop"],
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertFalse((self.base / "calls").exists(), "No dependency or service commands")
+        after = {str(p.relative_to(self.codex_home)): p.read_bytes()
+                 for p in self.codex_home.rglob("*") if p.is_file()}
+        self.assertEqual(after, before)
+        self.assertNotIn("previous configuration restored", result.stderr)
 
     def test_fresh_install_enables_required_discovery_and_completes(self):
         result = self.run_install()

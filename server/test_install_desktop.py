@@ -83,6 +83,14 @@ class DesktopInstallationTests(unittest.TestCase):
                     install_desktop.install(root, root / "state", root / "app", root, Path("/bin/node"))
             self.assertFalse((root / "state").exists())
 
+    def test_check_only_verifies_app_without_installing(self) -> None:
+        with patch.object(install_desktop, "verify_app", return_value=install_desktop.SUPPORTED_HASHES) as verify, \
+                patch.object(install_desktop, "install") as install, \
+                patch("sys.argv", ["install_desktop.py", "--check"]):
+            install_desktop.main()
+        verify.assert_called_once_with(Path("/Applications/ChatGPT.app"))
+        install.assert_not_called()
+
     def test_symlink_destination_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
