@@ -114,13 +114,13 @@ test('failed qualification remains a hard stop when artifacts or adapter change'
         if (failure === 'hook') {
           dependencies.verifyLaunchHook = async () => {
             await mutate();
-            throw new DesktopContractMismatch('Native launch hook changed');
+            throw new Error('Native launch hook operation failed');
           };
         } else {
           dependencies.probe = async () => {
             await mutate();
             if (failure === 'missing-version') return { checks: [] };
-            throw new DesktopContractMismatch('Native contract changed');
+            throw new Error('Native probe operation failed');
           };
         }
         const manifest = {

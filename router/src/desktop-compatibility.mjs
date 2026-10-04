@@ -145,7 +145,7 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
     receiptFile = path.join(cacheDirectory, `${digest(JSON.stringify(expected))}.json`);
     receipt = readReceipt(receiptFile, expected);
   }
-  let incompatibilityError;
+  let qualificationError;
   if (!receipt) {
     try {
       await hook(app);
@@ -156,8 +156,7 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
       receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
         checks: result.checks, checkedAt: new Date().toISOString() };
     } catch (error) {
-      if (!(error instanceof DesktopContractMismatch)) throw error;
-      incompatibilityError = error;
+      qualificationError = error;
     }
   }
   // An updater can replace the bundle while qualification is running.
@@ -165,7 +164,7 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
   if (JSON.stringify(before) !== JSON.stringify(after) || expected.contractDigest !== await fingerprint()) {
     throw new Error('Desktop or adapter changed during qualification; reopen after the update finishes');
   }
-  if (incompatibilityError) throw incompatibilityError;
+  if (qualificationError) throw qualificationError;
   if (receiptFile) await writeReceipt(receiptFile, receipt);
   return receipt;
 }

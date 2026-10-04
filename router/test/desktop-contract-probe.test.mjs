@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { probeDesktopContract } from '../src/desktop-contract-probe.mjs';
@@ -10,7 +11,7 @@ const carrier = {
   supported_reasoning_levels: ['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => ({ effort })),
 };
 
-async function fakeNative(t, behavior, models = [carrier], metadataBehavior = '') {
+async function fakeNative(t, behavior, models = [carrier], metadataBehavior = '', versionBehavior = '') {
   const directory = await mkdtemp(join(tmpdir(), 'jev-contract-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const binary = join(directory, 'native');
@@ -18,11 +19,37 @@ async function fakeNative(t, behavior, models = [carrier], metadataBehavior = ''
   await writeFile(binary, `#!${process.execPath}\n
 import { appendFileSync } from 'node:fs';
 appendFileSync(${JSON.stringify(report)}, JSON.stringify({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd(), pid: process.pid }) + '\\n');
-if (process.argv[2] === '--version') console.log('codex-cli 1.0.0-probe');
+if (process.argv[2] === '--version') { console.log('codex-cli 1.0.0-probe'); ${versionBehavior} }
 else if (process.argv[2] === 'debug') { console.log(${JSON.stringify(JSON.stringify({ models }))}); ${metadataBehavior} }
 else { ${behavior} }
 `, { mode: 0o700 });
   return { binary, report };
+}
+
+async function waitForProcessGroupRetirement(processGroup) {
+  const deadline = Date.now() + 3000;
+  do {
+    const processes = execFileSync('/bin/ps', ['-axo', 'pgid=,stat='], { encoding: 'utf8' });
+    const active = processes.split('\n').some((line) => {
+      const [group, state] = line.trim().split(/\s+/);
+      return group === String(processGroup) && state && !/^[ZX]/.test(state);
+    });
+    if (!active) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } while (Date.now() < deadline);
+  assert.fail(`process group ${processGroup} still has a live member`);
+}
+
+async function waitForProcessRetirement(pid) {
+  const deadline = Date.now() + 3000;
+  do {
+    let state = '';
+    try { state = execFileSync('/bin/ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim(); }
+    catch (error) { if (error.status !== 1) throw error; }
+    if (!state || /^[ZX]/.test(state)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } while (Date.now() < deadline);
+  assert.fail(`process ${pid} is still running`);
 }
 
 test('probe refuses malformed native protocol and never inherits caller credentials or configuration', async (t) => {
@@ -78,12 +105,30 @@ test('probe reports native exit without exposing native output', async (t) => {
   });
 });
 
-test('probe preserves the original native spawn error and still removes its private home', async (t) => {
-  const native = await fakeNative(t, '', [carrier], 'await import("node:fs/promises").then(({ unlink }) => unlink(process.argv[1]));');
-  await assert.rejects(probeDesktopContract(native.binary), (error) => error.code === 'ENOENT');
-  const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
-  const debugInvocation = records.at(-1);
-  await assert.rejects(readFile(join(debugInvocation.env.HOME, 'config.toml')), { code: 'ENOENT' });
+test('probe distinguishes direct spawn errors from sandbox child failures and removes its private home', async (t) => {
+  const sandboxRunner = `const { spawnSync } = await import('node:child_process');\n` +
+    `const child = spawnSync(process.argv[1], process.argv.slice(2), { encoding: 'utf8' });\n` +
+    `if (child.error) { process.stderr.write(child.error.code); process.exit(127); }\n` +
+    `process.stdout.write(child.stdout); process.stderr.write(child.stderr); process.exit(child.status ?? 127);`;
+  for (const path of ['direct-spawn', 'sandbox-child']) {
+    await t.test(path, async (subtest) => {
+      const native = await fakeNative(subtest, '', [carrier], '', 'await import("node:fs/promises").then(({ unlink }) => unlink(process.argv[1]));');
+      const dependencies = path === 'direct-spawn'
+        ? { nativeCommand: (binary, args) => ({ file: binary, args }) }
+        : { nativeCommand: (binary, args) => ({ file: process.execPath, args: ['-e', sandboxRunner, binary, ...args] }) };
+      await assert.rejects(probeDesktopContract(native.binary, dependencies), (error) => {
+        assert.notEqual(error.code, 'DESKTOP_INCOMPATIBLE');
+        if (path === 'direct-spawn') assert.equal(error.code, 'ENOENT');
+        else {
+          assert.equal(error.code, 127);
+          assert.match(error.stderr, /ENOENT/);
+        }
+        return true;
+      });
+      const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+      await assert.rejects(access(records[0].env.HOME), { code: 'ENOENT' });
+    });
+  }
 });
 
 test('macOS native children cannot open a non-loopback network connection', { skip: process.platform !== 'darwin' }, async (t) => {
@@ -116,12 +161,12 @@ descendant.once('message', () => { console.log('invalid protocol'); process.exit
   await writeFile(native.binary, (await readFile(native.binary, 'utf8')).replace('DESCENDANT_REPORT', report), { mode: 0o700 });
   await assert.rejects(probeDesktopContract(native.binary), /protocol|native process exited/);
   const descendant = JSON.parse(await readFile(report, 'utf8'));
-  assert.throws(() => process.kill(descendant.pid, 0), { code: 'ESRCH' });
+  await waitForProcessRetirement(descendant.pid);
   await assert.rejects(readFile(join(descendant.home, 'descendant/activity')), { code: 'ENOENT' });
 });
 
-test('probe propagates process-group cleanup failures after removing its private home', { skip: process.platform === 'win32' }, async (t) => {
-  const native = await fakeNative(t, "process.stdin.once('data', () => console.log('invalid protocol'));");
+test('probe propagates process-group cleanup failures and retains the private home until retirement', { skip: process.platform === 'win32' }, async (t) => {
+  const native = await fakeNative(t, "process.stdin.once('data', () => { console.log('invalid protocol'); setInterval(() => {}, 1000); });");
   const originalKill = process.kill;
   const terminationError = Object.assign(new Error('native process group could not be terminated'), { code: 'EPERM' });
   process.kill = (pid, signal) => {
@@ -137,9 +182,11 @@ test('probe propagates process-group cleanup failures after removing its private
       const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
       appServer = records.at(-1);
       originalKill(-appServer.pid, 'SIGKILL');
+      await waitForProcessGroupRetirement(appServer.pid);
     } catch (error) { if (error.code !== 'ESRCH' && error.code !== 'ENOENT') throw error; }
   }
-  await assert.rejects(readFile(join(appServer.env.HOME, 'config.toml')), { code: 'ENOENT' });
+  await access(join(appServer.env.HOME, 'config.toml'));
+  await rm(appServer.env.HOME, { recursive: true, force: true });
 });
 
 test('probe times out and terminates an unresponsive native process', { timeout: 15000 }, async (t) => {

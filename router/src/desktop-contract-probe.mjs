@@ -23,6 +23,22 @@ function nativeCommand(binary, args) {
     : { file: binary, args };
 }
 
+async function waitForProcessGroupRetirement(processGroup) {
+  const deadline = Date.now() + 2500;
+  do {
+    const { stdout } = await run('/bin/ps', ['-axo', 'pgid=,stat='], {
+      timeout: 1000, maxBuffer: MAX_BYTES, encoding: 'utf8', env: { PATH: '/usr/bin:/bin' },
+    });
+    const active = stdout.split('\n').some((line) => {
+      const [group, state] = line.trim().split(/\s+/);
+      return group === String(processGroup) && state && !/^[ZX]/.test(state);
+    });
+    if (!active) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  } while (Date.now() < deadline);
+  throw new Error('Private native process group did not retire before qualification cleanup');
+}
+
 function failure(reason) {
   return new Error(`Jev Desktop compatibility: ${reason}. Keep Jev disabled for this app build and update the router.`);
 }
@@ -37,10 +53,10 @@ function requireSafety(condition, reason) {
 
 async function bundledMetadata(context) {
   const options = { env: context.env, cwd: context.directory, timeout: REQUEST_TIMEOUT, killSignal: 'SIGKILL', maxBuffer: MAX_BYTES, encoding: 'utf8' };
-  const versionCommand = nativeCommand(context.binary, ['--version']);
+  const versionCommand = context.nativeCommand(context.binary, ['--version']);
   const nativeVersion = (await run(versionCommand.file, versionCommand.args, options)).stdout.trim();
   requireContract(/^codex-cli [0-9][\w.+-]{0,100}$/.test(nativeVersion), 'native version protocol changed');
-  const catalogCommand = nativeCommand(context.binary, ['debug', 'models', '--bundled']);
+  const catalogCommand = context.nativeCommand(context.binary, ['debug', 'models', '--bundled']);
   const catalogText = (await run(catalogCommand.file, catalogCommand.args, options)).stdout;
   let catalog;
   try { catalog = JSON.parse(catalogText); }
@@ -161,7 +177,7 @@ class NativeSession {
     this.noticeSequence = 0;
     this.waiters = new Set();
     this.buffer = '';
-    const command = nativeCommand(context.binary, ['app-server']);
+    const command = context.nativeCommand(context.binary, ['app-server']);
     this.child = spawn(command.file, command.args, { env: context.env, cwd: context.directory,
       detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] });
     this.exited = new Promise((resolve) => { this.resolveExit = resolve; });
@@ -307,25 +323,31 @@ class NativeSession {
     for (const entry of this.waiters) clearTimeout(entry.timer);
     this.child.stdin.destroy();
     let cleanupError;
+    const processGroup = this.child.pid;
     try { this.terminateGroup('SIGTERM'); }
     catch (error) { cleanupError = error; }
-    const timer = setTimeout(() => {
-      try { this.terminateGroup('SIGKILL'); }
-      catch (error) { cleanupError ??= error; }
-    }, 1000);
-    let exitTimer;
+    let timer;
     try {
-      await Promise.race([this.exited, new Promise((resolve) => { exitTimer = setTimeout(resolve, 2000); })]);
-      if (this.child.pid && this.child.exitCode == null && this.child.signalCode == null) {
-        cleanupError ??= new Error('Private native process did not exit after termination');
-      }
+      await Promise.race([this.exited, new Promise((resolve) => { timer = setTimeout(resolve, 1000); })]);
     }
     finally {
       clearTimeout(timer);
-      clearTimeout(exitTimer);
       try { this.terminateGroup('SIGKILL'); }
       catch (error) { cleanupError ??= error; }
-      this.closed = true;
+      try {
+        if (!processGroup) this.groupRetired = true;
+        else if (process.platform === 'win32') {
+          await Promise.race([this.exited, new Promise((resolve) => { timer = setTimeout(resolve, 2000); })]);
+          if (this.child.exitCode == null && this.child.signalCode == null) {
+            throw new Error('Private native process did not exit after termination');
+          }
+          this.groupRetired = true;
+        } else {
+          await waitForProcessGroupRetirement(processGroup);
+          this.groupRetired = true;
+        }
+      } catch (error) { cleanupError ??= error; }
+      finally { clearTimeout(timer); this.closed = true; }
     }
     if (cleanupError) throw cleanupError;
   }
@@ -450,11 +472,12 @@ async function exercise(context) {
 }
 
 /** Qualify a signed native executable using only private synthetic local state. */
-export async function probeDesktopContract(nativeBinary) {
+export async function probeDesktopContract(nativeBinary, dependencies = {}) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jev-desktop-contract-')));
   const context = { binary: nativeBinary, directory, checks: [], httpRequests: 0, compactions: 0,
     windowCount: 0, minimumContextWindow: Infinity, history: new Map(), recoveryDeniedRequests: 0,
     recoveryCompactRequests: 0, recoveryCompactionAttempts: 0, recoveryModelOutputs: 0 };
+  context.nativeCommand = dependencies.nativeCommand ?? nativeCommand;
   // Do not inherit credentials, proxy overrides, plugins, or caller-controlled native flags.
   context.env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: directory, CODEX_HOME: directory, TMPDIR: directory, LANG: 'C', LC_ALL: 'C' };
   context.fail = (error) => { context.error ??= error; context.session?.fail(context.error); };
@@ -484,8 +507,10 @@ export async function probeDesktopContract(nativeBinary) {
         await new Promise((resolve) => context.server.close(resolve));
       } catch (error) { cleanupError ??= error; }
     }
-    try { await rm(directory, { recursive: true, force: true }); }
-    catch (error) { cleanupError ??= error; }
+    if (!context.session || context.session.groupRetired) {
+      try { await rm(directory, { recursive: true, force: true }); }
+      catch (error) { cleanupError ??= error; }
+    }
     if (cleanupError) throw cleanupError;
   }
 }
