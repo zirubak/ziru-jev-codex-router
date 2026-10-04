@@ -4,37 +4,60 @@ import os from 'node:os';
 import path from 'node:path';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
-import { qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { DesktopContractMismatch, qualifyDesktop } from '../src/desktop-compatibility.mjs';
 import { isStdioAppServer, readDesktopManifest } from '../src/desktop-runtime.mjs';
+import { pathToFileURL } from 'node:url';
 
 const bundledNative = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex';
-const args = process.argv.slice(2);
-let nativeBinary = bundledNative;
-let provider;
-let state;
-if (isStdioAppServer(args)) {
-  try {
-    const file = process.env.JEV_DESKTOP_CONFIG;
-    const manifest = readDesktopManifest(file, process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex'));
+export async function launchDesktop(args = process.argv.slice(2), dependencies = {}) {
+  const environment = dependencies.environment ?? process.env;
+  const readManifest = dependencies.readManifest ?? readDesktopManifest;
+  const qualify = dependencies.qualify ?? qualifyDesktop;
+  const createState = dependencies.createState ?? ((directory) => new PrivateRouteState(directory));
+  const connectBridge = dependencies.connectBridge ?? connectDesktopBridge;
+  const spawnProcess = dependencies.spawnProcess ?? spawn;
+  const signalTarget = dependencies.signalTarget ?? process;
+  const writeStderr = dependencies.writeStderr ?? ((message) => process.stderr.write(message));
+  let nativeBinary = dependencies.bundledNative ?? bundledNative;
+  let provider;
+  let state;
+  if (isStdioAppServer(args)) {
+    const file = environment.JEV_DESKTOP_CONFIG;
+    const manifest = readManifest(file, environment.CODEX_HOME ?? path.join(os.homedir(), '.codex'));
     nativeBinary = manifest.nativeBinary;
-    // The updater can respawn this executable without running our app launcher.
-    await qualifyDesktop({ app: manifest.app, cacheDirectory: path.join(path.dirname(file), 'qualifications') });
-    state = new PrivateRouteState(manifest.routeStateDirectory);
-    provider = manifest.provider;
-  } catch {
-    process.stderr.write('Jev Desktop could not verify compatibility. Existing chats remain readable; Jev requests require reconnection through Jev Codex.command.\n');
+    let compatible = true;
+    try {
+      // The updater can respawn this executable without running our app launcher.
+      await qualify({ app: manifest.app, cacheDirectory: path.join(path.dirname(file), 'qualifications') });
+    } catch (error) {
+      if (!(error instanceof DesktopContractMismatch)) throw error;
+      compatible = false;
+      writeStderr('Jev Desktop could not verify compatibility. Existing chats remain readable; Jev requests require reconnection through Jev Codex.command.\n');
+    }
+    if (compatible) {
+      state = createState(manifest.routeStateDirectory);
+      provider = manifest.provider;
+    }
   }
+  const adapted = Boolean(provider);
+  const env = { ...environment };
+  delete env.CODEX_CLI_PATH;
+  delete env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;
+  delete env.JEV_DESKTOP_CONFIG;
+  const child = spawnProcess(nativeBinary, args, { env, stdio: adapted ? ['pipe', 'pipe', 'inherit'] : 'inherit' });
+  if (adapted) connectBridge({ input: process.stdin, output: process.stdout, child, provider, state });
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) signalTarget.on(signal, () => child.kill(signal));
+  child.on('error', () => {
+    writeStderr('Unable to start the native Codex executable.\n');
+    process.exitCode = 1;
+  });
+  child.on('exit', (code) => { process.exitCode = code ?? 1; });
+  return child;
 }
-const adapted = Boolean(provider);
-const env = { ...process.env };
-delete env.CODEX_CLI_PATH;
-delete env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;
-delete env.JEV_DESKTOP_CONFIG;
-const child = spawn(nativeBinary, args, { env, stdio: adapted ? ['pipe', 'pipe', 'inherit'] : 'inherit' });
-if (adapted) connectDesktopBridge({ input: process.stdin, output: process.stdout, child, provider, state });
-for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, () => child.kill(signal));
-child.on('error', () => {
-  process.stderr.write('Unable to start the native Codex executable.\n');
-  process.exitCode = 1;
-});
-child.on('exit', (code) => { process.exitCode = code ?? 1; });
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  launchDesktop().catch((error) => {
+    process.stderr.write(`Jev Desktop launch: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}
