@@ -105,6 +105,50 @@ test('probe reports native exit without exposing native output', async (t) => {
   });
 });
 
+test('probe hard-stops on an unsolicited HTTP request before any qualification turn', async (t) => {
+  const native = await fakeNative(t, `
+const { readFile } = await import('node:fs/promises');
+const config = await readFile(process.env.CODEX_HOME + '/config.toml', 'utf8');
+const baseUrl = config.match(/base_url = "([^"]+)"/)[1];
+await fetch(baseUrl + '/unexpected', { method: 'POST', body: 'not-json' });
+process.stdin.resume();
+`);
+  await assert.rejects(probeDesktopContract(native.binary), (error) => {
+    assert.notEqual(error.code, 'DESKTOP_INCOMPATIBLE');
+    assert.match(error.message, /outside an expected qualification turn/);
+    return true;
+  });
+  const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  await assert.rejects(access(records[0].env.HOME), { code: 'ENOENT' });
+});
+
+test('probe preserves app-server spawn errors and removes its private home', async (t) => {
+  const native = await fakeNative(t, '');
+  await assert.rejects(probeDesktopContract(native.binary, {
+    nativeCommand: (binary, args) => args[0] === 'app-server'
+      ? { file: `${binary}.missing`, args: [] }
+      : { file: binary, args },
+  }), (error) => {
+    assert.equal(error.code, 'ENOENT');
+    assert.notEqual(error.code, 'DESKTOP_INCOMPATIBLE');
+    return true;
+  });
+  const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(records.length, 2, 'the injected app-server path must not execute');
+  await assert.rejects(access(records[0].env.HOME), { code: 'ENOENT' });
+});
+
+test('probe creates private route state before spawning the native app-server', async (t) => {
+  const native = await fakeNative(t, "process.stdin.once('data', () => { console.log('invalid protocol'); });");
+  const routeStateError = new Error('private route state could not be initialized');
+  await assert.rejects(probeDesktopContract(native.binary, {
+    createPrivateRouteState: () => { throw routeStateError; },
+  }), (error) => error === routeStateError);
+  const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(records.length, 2, 'route-state initialization failure must occur before app-server spawn');
+  await assert.rejects(access(records[0].env.HOME), { code: 'ENOENT' });
+});
+
 test('probe distinguishes direct spawn errors from sandbox child failures and removes its private home', async (t) => {
   const sandboxRunner = `const { spawnSync } = await import('node:child_process');\n` +
     `const child = spawnSync(process.argv[1], process.argv.slice(2), { encoding: 'utf8' });\n` +

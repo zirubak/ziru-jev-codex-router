@@ -99,7 +99,6 @@ function respond(res, number) {
 function verifyHttp(context, req, body) {
   requireContract(req.method === 'POST' && req.url === '/v1/responses', 'unexpected HTTP path or automatic compaction');
   const expected = context.expected;
-  requireContract(expected && !expected.received, 'unexpected extra native HTTP request');
   requireContract(body.model === CARRIER && req.headers['x-jev-selection-mode'] === expected.mode
     && body.reasoning?.effort === expected.effort, 'HTTP carrier, selection mode, or effort changed');
   requireContract(req.headers['x-jev-desktop-recovery'] === 'bridge-active', 'native config did not replace the Desktop recovery marker for a bridged request');
@@ -134,6 +133,10 @@ function refuseRecovery(context, req, body, res) {
 async function startResponder(context) {
   const server = createServer((req, res) => {
     void (async () => {
+      if (!context.recovery) {
+        requireSafety(context.expected && !context.expected.received,
+          'native sent HTTP outside an expected qualification turn');
+      }
       const chunks = [];
       let size = 0;
       for await (const chunk of req) {
@@ -177,12 +180,12 @@ class NativeSession {
     this.noticeSequence = 0;
     this.waiters = new Set();
     this.buffer = '';
+    const state = context.createPrivateRouteState(join(context.directory, 'private-routes'));
+    this.bridge = new DesktopProviderBridge({ request: this.request.bind(this), provider: context.provider, state });
     const command = context.nativeCommand(context.binary, ['app-server']);
     this.child = spawn(command.file, command.args, { env: context.env, cwd: context.directory,
       detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] });
     this.exited = new Promise((resolve) => { this.resolveExit = resolve; });
-    this.bridge = new DesktopProviderBridge({ request: this.request.bind(this), provider: context.provider,
-      state: new PrivateRouteState(join(context.directory, 'private-routes')) });
     this.child.on('error', (error) => {
       this.fail(error);
       this.resolveExit();
@@ -478,6 +481,8 @@ export async function probeDesktopContract(nativeBinary, dependencies = {}) {
     windowCount: 0, minimumContextWindow: Infinity, history: new Map(), recoveryDeniedRequests: 0,
     recoveryCompactRequests: 0, recoveryCompactionAttempts: 0, recoveryModelOutputs: 0 };
   context.nativeCommand = dependencies.nativeCommand ?? nativeCommand;
+  context.createPrivateRouteState = dependencies.createPrivateRouteState
+    ?? ((directory) => new PrivateRouteState(directory));
   // Do not inherit credentials, proxy overrides, plugins, or caller-controlled native flags.
   context.env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: directory, CODEX_HOME: directory, TMPDIR: directory, LANG: 'C', LC_ALL: 'C' };
   context.fail = (error) => { context.error ??= error; context.session?.fail(context.error); };
