@@ -39,6 +39,15 @@ failure was reproduced in the original checkout without the runtime patch.
 Final syntax checks passed; focused bridge and probe tests passed 39 with three
 optional tests skipped.
 
-Transactional installation results will be recorded after completion. The user
-must restart Desktop and retry the original chat to confirm the visible symptom
-is resolved.
+Root `./install.sh --desktop` completed successfully at runtime revision
+`690b861cc8cd444b3c38107a3f9b8f907d6e4dfa`, using the existing private env file
+through `JEV_ENV_FILE` and Python 3.12 on PATH. Desktop qualification and
+registration passed, both services were installed, live smoke completed with
+HTTP 200, and catalog and isolation checks passed. Documented status and doctor
+commands exited successfully; doctor had no FAIL markers. No rollback or
+restoration failure occurred. Desktop was not restarted automatically.
+
+The user must restart Desktop and retry the original chat to confirm the visible
+symptom is resolved. This patch fixes the verified unloaded-state rejection;
+missing permission provenance or another subscriber can still legitimately
+prevent a provider switch.
