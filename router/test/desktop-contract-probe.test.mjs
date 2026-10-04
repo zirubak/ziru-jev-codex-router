@@ -55,6 +55,15 @@ test('probe refuses carrier metadata that cannot preserve every supported Manual
   assert.equal(records.length, 2, 'an incompatible catalog must be refused before app-server starts');
 });
 
+test('probe marks malformed bundled catalog entries as incompatibility', async (t) => {
+  const native = await fakeNative(t, 'process.exit(99);', [null]);
+  await assert.rejects(probeDesktopContract(native.binary), (error) => {
+    assert.equal(error.code, 'DESKTOP_INCOMPATIBLE');
+    assert.match(error.message, /bundled native catalog protocol changed/);
+    return true;
+  });
+});
+
 test('probe refuses native tool callbacks without executing or granting them', async (t) => {
   const native = await fakeNative(t, `process.stdin.once('data', () => console.log(JSON.stringify({ id: 7, method: 'item/commandExecution/requestApproval', params: { command: 'do-not-run' } })));`);
   await assert.rejects(probeDesktopContract(native.binary), /unexpected native callback/);

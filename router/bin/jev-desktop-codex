@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
-import { qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { DesktopContractMismatch, qualifyDesktop } from '../src/desktop-compatibility.mjs';
 import { isStdioAppServer, readDesktopManifest } from '../src/desktop-runtime.mjs';
 
 const bundledNative = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex';
@@ -21,7 +21,8 @@ if (isStdioAppServer(args)) {
     await qualifyDesktop({ app: manifest.app, cacheDirectory: path.join(path.dirname(file), 'qualifications') });
     state = new PrivateRouteState(manifest.routeStateDirectory);
     provider = manifest.provider;
-  } catch {
+  } catch (error) {
+    if (!(error instanceof DesktopContractMismatch)) throw error;
     process.stderr.write('Jev Desktop could not verify compatibility. Existing chats remain readable; Jev requests require reconnection through Jev Codex.command.\n');
   }
 }

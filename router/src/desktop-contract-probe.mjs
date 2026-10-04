@@ -50,9 +50,11 @@ async function bundledMetadata(context) {
   }
   requireContract(catalog && typeof catalog === 'object' && Array.isArray(catalog.models),
     'bundled native catalog protocol changed');
-  const carrier = catalog.models.find((model) => model?.slug === CARRIER);
-  requireContract(carrier?.max_context_window >= 872000
-    && EFFORTS.every((effort) => carrier.supported_reasoning_levels?.some((entry) => entry.effort === effort)),
+  requireContract(catalog.models.every((model) => model && typeof model === 'object' && !Array.isArray(model)),
+    'bundled native catalog protocol changed');
+  const carrier = catalog.models.find((model) => model.slug === CARRIER);
+  requireContract(carrier?.max_context_window >= 872000 && Array.isArray(carrier.supported_reasoning_levels)
+    && EFFORTS.every((effort) => carrier.supported_reasoning_levels.some((entry) => entry?.effort === effort)),
   'carrier metadata does not preserve the required context and Manual efforts');
   const catalogPath = join(context.directory, 'official-models.json');
   context.catalogData = JSON.stringify({ models: catalog.models });
