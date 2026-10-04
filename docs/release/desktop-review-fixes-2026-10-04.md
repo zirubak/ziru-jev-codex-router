@@ -60,7 +60,10 @@ the four code commits, found no Python changes, and checked installer/session
 integration. The review task metadata selected `claude-opus-5.5`; the reviewer
 could not independently verify the underlying model. It noted that native
 metadata-command stderr can be included in a launch error; those commands run
-with the probe's sanitized environment and private temporary home.
+with the probe's sanitized environment and private temporary home. It also
+noted that recovery for an incompatible native build relies on that build
+retaining the configured recovery headers; that mismatched-build refusal path
+was not independently exercised here.
 
 The automated code-review detector did not complete because its configured
 model was unavailable. CodeQL reported no analysis because it detected no
