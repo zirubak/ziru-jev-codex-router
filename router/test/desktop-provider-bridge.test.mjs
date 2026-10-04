@@ -168,7 +168,7 @@ function canonicalDesktopManifest(codexHome, app) {
   };
 }
 
-test('native bridge fixture builder produces and rejects canonical manifests portably', async (t) => {
+test('native bridge fixture builder produces and rejects canonical manifests', { skip: process.platform === 'win32' }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-manifest-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const app = join(directory, 'Applications/ChatGPT.app');
