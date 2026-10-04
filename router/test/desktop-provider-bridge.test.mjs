@@ -352,8 +352,12 @@ test('forking a Jev thread with an official model selects the official provider'
   assert.equal(calls.at(-1).params.modelProvider, 'openai');
 });
 
+// A rejected manifest makes the wrapper spawn its bundled fallback, not JEV_DESKTOP_NATIVE_BINARY.
+const wrapperFallbackNative = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex';
+
 test('each native invocation disables Jev for a noncanonical Desktop manifest', {
-  skip: !process.env.JEV_DESKTOP_NATIVE_BINARY,
+  skip: !process.env.JEV_DESKTOP_NATIVE_BINARY
+    || resolve(process.env.JEV_DESKTOP_NATIVE_BINARY) !== wrapperFallbackNative,
   timeout: 90000,
 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-pins-'));
