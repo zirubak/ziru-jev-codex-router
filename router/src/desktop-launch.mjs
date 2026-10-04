@@ -28,6 +28,16 @@ export function planDesktopLaunch(manifest, manifestPath, environment, observed)
     warning: compatible ? null : 'Desktop compatibility is unverified. Jev chats remain readable; reconnect before sending a Jev request.' };
 }
 
+/** A failed qualification degrades to native recovery; only an unsafe manifest or plan stops. */
+export async function observeDesktopCompatibility(manifest, manifestPath, qualify = qualifyDesktop) {
+  try {
+    await qualify({ app: manifest.app, cacheDirectory: path.join(path.dirname(manifestPath), 'qualifications') });
+    return { contractVerified: true };
+  } catch (error) {
+    return { contractVerified: false, reason: error?.message ?? String(error) };
+  }
+}
+
 async function main() {
   if (process.platform !== 'darwin') throw new Error('Desktop integration requires macOS');
   const manifestPath = process.argv[2];
@@ -39,11 +49,12 @@ async function main() {
   if (commands.split('\n').some((line) => line.trim() === manifest.appExecutable)) {
     throw new Error('Codex is already running. Quit it yourself, then open this launcher. No process was stopped.');
   }
-  await qualifyDesktop({ app: manifest.app, cacheDirectory: path.join(path.dirname(manifestPath), 'qualifications') });
-  if (manifest.session) {
+  const observed = await observeDesktopCompatibility(manifest, manifestPath);
+  if (observed.contractVerified && manifest.session) {
     execFileSync(manifest.session.python, [manifest.session.script, 'activate', manifestPath], { stdio: 'pipe' });
   }
-  const plan = planDesktopLaunch(manifest, manifestPath, process.env, { contractVerified: true });
+  const plan = planDesktopLaunch(manifest, manifestPath, process.env, observed);
+  if (observed.reason) process.stderr.write(`Desktop compatibility: ${observed.reason}\n`);
   if (plan.warning) process.stderr.write(`${plan.warning}\n`);
   // The caller explicitly starts the app. Installation never invokes this path.
   const child = spawn(plan.executable, plan.args, { env: plan.env, detached: true, windowsHide: true, stdio: 'ignore' });

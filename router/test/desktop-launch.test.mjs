@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { planDesktopLaunch } from '../src/desktop-launch.mjs';
+import { observeDesktopCompatibility, planDesktopLaunch } from '../src/desktop-launch.mjs';
 
 const manifest = {
   version: 1, nativeBinary: '/app/codex', appExecutable: '/app/ChatGPT',
@@ -46,4 +46,21 @@ test('a signed update that passes the current native contract keeps the bridge e
   assert.equal(result.mode, 'jev');
   assert.equal(result.env.CODEX_CLI_PATH, manifest.bridgeBinary);
   assert.equal(result.warning, null);
+});
+
+test('failed qualification selects the native recovery launch instead of stopping', async () => {
+  const app = { ...manifest, app: '/app' };
+  const failed = await observeDesktopCompatibility(app, '/private/desktop/manifest.json', async () => {
+    throw new Error('Native contract failed');
+  });
+  assert.equal(failed.contractVerified, false);
+  assert.match(failed.reason, /Native contract failed/);
+  const recovery = planDesktopLaunch(manifest, '/private/desktop/manifest.json', originalEnv, failed);
+  assert.equal(recovery.mode, 'native');
+  assert.equal(recovery.executable, manifest.appExecutable);
+  assert.equal(recovery.env.CODEX_CLI_PATH, undefined);
+  let request;
+  const passed = await observeDesktopCompatibility(app, '/private/desktop/manifest.json', async (options) => { request = options; });
+  assert.deepEqual(request, { app: '/app', cacheDirectory: '/private/desktop/qualifications' });
+  assert.equal(passed.contractVerified, true);
 });

@@ -106,6 +106,21 @@ test('artifact or adapter replacement during a probe cannot publish a receipt', 
   }
 });
 
+test('a bundle replaced around signature verification cannot become the qualified baseline', async (t) => {
+  for (const change of ['app', 'native']) {
+    await t.test(change, async (subtest) => {
+      const { options, dependencies, files, calls } = await fixture(subtest);
+      dependencies.verifySignature = async () => {
+        calls.push('signature');
+        await writeFile(change === 'app' ? files.appAsar : files.nativeBinary, 'unsigned replacement after verification');
+      };
+      await assert.rejects(qualifyDesktop(options, dependencies), /changed during qualification/);
+      assert.deepEqual(calls, ['signature']);
+      await assert.rejects(stat(options.cacheDirectory), { code: 'ENOENT' });
+    });
+  }
+});
+
 test('launch hook qualification reads actual ASAR entries and refuses missing or unsafe entries', async (t) => {
   const cases = [
     ['missing-hook', archive('process.env.UNRELATED')],

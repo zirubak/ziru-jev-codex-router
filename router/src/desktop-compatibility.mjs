@@ -112,8 +112,12 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
   const fingerprint = dependencies.contractDigest ?? contractDigest;
   const probe = dependencies.probe ?? (async (binary) =>
     (await import('./desktop-contract-probe.mjs')).probeDesktopContract(binary));
-  await sign(app);
   const before = await identity(app);
+  await sign(app);
+  // Only the exact bytes covered by signature verification may be fingerprinted.
+  if (JSON.stringify(before) !== JSON.stringify(await identity(app))) {
+    throw new Error('Desktop changed during qualification; reopen after the update finishes');
+  }
   const expected = { ...before, contractVersion: CONTRACT_VERSION, contractDigest: await fingerprint() };
   let receiptFile;
   let receipt;
