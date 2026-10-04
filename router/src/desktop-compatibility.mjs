@@ -126,27 +126,26 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
     receiptFile = path.join(cacheDirectory, `${digest(JSON.stringify(expected))}.json`);
     receipt = readReceipt(receiptFile, expected);
   }
+  let incompatibilityError;
   if (!receipt) {
-    try { await hook(app); }
-    catch (error) {
-      throw Object.assign(new Error(error.message), { code: 'DESKTOP_INCOMPATIBLE' });
+    try {
+      await hook(app);
+      const result = await probe(desktopArtifacts(app).nativeBinary);
+      if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) {
+        throw new Error('Native contract returned no version evidence');
+      }
+      receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
+        checks: result.checks, checkedAt: new Date().toISOString() };
+    } catch (error) {
+      incompatibilityError = Object.assign(new Error(error.message), { code: 'DESKTOP_INCOMPATIBLE' });
     }
-    let result;
-    try { result = await probe(desktopArtifacts(app).nativeBinary); }
-    catch (error) {
-      throw Object.assign(new Error(error.message), { code: 'DESKTOP_INCOMPATIBLE' });
-    }
-    if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) {
-      throw Object.assign(new Error('Native contract returned no version evidence'), { code: 'DESKTOP_INCOMPATIBLE' });
-    }
-    receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
-      checks: result.checks, checkedAt: new Date().toISOString() };
   }
   // An updater can replace the bundle while qualification is running.
   const after = await identity(app);
   if (JSON.stringify(before) !== JSON.stringify(after) || expected.contractDigest !== await fingerprint()) {
     throw new Error('Desktop or adapter changed during qualification; reopen after the update finishes');
   }
+  if (incompatibilityError) throw incompatibilityError;
   if (receiptFile) await writeReceipt(receiptFile, receipt);
   return receipt;
 }

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
 import { DesktopProviderBridge, JevBridgeError } from '../src/desktop-provider-bridge.mjs';
@@ -151,12 +150,56 @@ import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { desktopArtifacts } from '../src/desktop-compatibility.mjs';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
+import { readDesktopManifest } from '../src/desktop-runtime.mjs';
+
+function canonicalDesktopManifest(codexHome, app) {
+  const artifacts = desktopArtifacts(app);
+  return {
+    version: 1, codexHome, nativeBinary: artifacts.nativeBinary,
+    appExecutable: join(app, 'Contents/MacOS/ChatGPT'), appAsar: artifacts.appAsar,
+    bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
+    routeStateDirectory: join(codexHome, 'private-routes'), provider,
+  };
+}
+
+test('native bridge fixture builder produces and rejects canonical manifests portably', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-manifest-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const app = join(directory, 'Applications/ChatGPT.app');
+  const manifestPath = join(directory, 'bridge.json');
+  const canonical = canonicalDesktopManifest(directory, app);
+  const save = async (value) => writeFile(manifestPath, JSON.stringify(value), { mode: 0o600 });
+
+  await save(canonical);
+  const loaded = readDesktopManifest(manifestPath, directory);
+  assert.equal(loaded.codexHome, directory);
+  assert.equal(loaded.app, app);
+  assert.equal(loaded.nativeBinary, canonical.nativeBinary);
+  assert.equal(loaded.appAsar, canonical.appAsar);
+  assert.equal(loaded.appExecutable, canonical.appExecutable);
+
+  const unregisteredHome = join(directory, 'unregistered-home');
+  await mkdir(unregisteredHome, { mode: 0o700 });
+  for (const [name, changed, expected] of [
+    ['missing codex home', { codexHome: undefined }, /has not enabled/],
+    ['unregistered codex home', { codexHome: unregisteredHome }, /has not enabled/],
+    ['noncanonical app archive', { appAsar: join(app, 'Contents/Resources/other.asar') }, /one application/],
+    ['noncanonical app executable', { appExecutable: join(app, 'Contents/MacOS/Other') }, /one application/],
+    ['missing bridge binary', { bridgeBinary: undefined }, /manifest paths/],
+    ['missing route state directory', { routeStateDirectory: undefined }, /manifest paths/],
+  ]) {
+    await t.test(name, async () => {
+      await save({ ...canonical, ...changed });
+      assert.throws(() => readDesktopManifest(manifestPath, directory), expected);
+    });
+  }
+});
 
 function rpcClient(input, output) {
   let counter = 0;
@@ -228,15 +271,7 @@ test('native app-server preserves official config and confirms round-trip provid
   await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   const manifest = join(directory, 'bridge.json');
   const app = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY, '../../../../../../..');
-  const artifacts = desktopArtifacts(app);
-  await writeFile(manifest, JSON.stringify({
-    version: 1, codexHome: directory, nativeBinary: artifacts.nativeBinary, provider,
-    appExecutable: join(app, 'Contents/MacOS/ChatGPT'), appAsar: artifacts.appAsar,
-    bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
-    routeStateDirectory: join(directory, 'private-routes'),
-    expectedAppSha256: createHash('sha256').update(await readFile(artifacts.appAsar)).digest('hex'),
-    expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
-  }), { mode: 0o600 });
+  await writeFile(manifest, JSON.stringify(canonicalDesktopManifest(directory, app)), { mode: 0o600 });
   const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
@@ -345,35 +380,29 @@ test('forking a Jev thread with an official model selects the official provider'
   assert.equal(calls.at(-1).params.modelProvider, 'openai');
 });
 
-test('each native invocation disables Jev for missing or stale application pins', {
+test('each native invocation disables Jev for malformed canonical manifests', {
   skip: !process.env.JEV_DESKTOP_NATIVE_BINARY,
   timeout: 90000,
 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-pins-'));
   const app = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY, '../../../../../../..');
-  const artifacts = desktopArtifacts(app);
-  const pins = {
-    expectedAppSha256: createHash('sha256').update(await readFile(artifacts.appAsar)).digest('hex'),
-    expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
-  };
+  const canonical = canonicalDesktopManifest(directory, app);
   const manifest = join(directory, 'bridge.json');
   const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
   try {
+    const unregisteredHome = join(directory, 'unregistered-home');
+    await mkdir(unregisteredHome, { mode: 0o700 });
     for (const change of [
-      { expectedAppSha256: undefined },
-      { expectedNativeSha256: undefined },
-      { expectedAppSha256: '0'.repeat(64) },
-      { expectedNativeSha256: '0'.repeat(64) },
+      { codexHome: undefined },
+      { codexHome: unregisteredHome },
+      { appAsar: join(app, 'Contents/Resources/other.asar') },
+      { appExecutable: join(app, 'Contents/MacOS/Other') },
+      { bridgeBinary: undefined },
       { routeStateDirectory: undefined },
     ]) {
-      await writeFile(manifest, JSON.stringify({
-        version: 1, codexHome: directory, nativeBinary: artifacts.nativeBinary, provider,
-        appExecutable: join(app, 'Contents/MacOS/ChatGPT'), appAsar: artifacts.appAsar,
-        bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
-        routeStateDirectory: join(directory, 'private-routes'), ...pins, ...change,
-      }), { mode: 0o600 });
+      await writeFile(manifest, JSON.stringify({ ...canonical, ...change }), { mode: 0o600 });
       const child = spawn(process.execPath, [fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)), 'app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
       const client = rpcClient(child.stdin, child.stdout);
       try {
