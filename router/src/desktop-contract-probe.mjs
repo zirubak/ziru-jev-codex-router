@@ -413,6 +413,15 @@ async function exercise(context) {
   requireContract(official.model === CARRIER && official.modelProvider === 'openai', 'official provider was not restored');
   verifyPermissions(official);
   context.checks.push('official-provider-restored');
+  await session.close();
+  session = await connect();
+  const saved = await session.request('thread/read', { threadId: autoThread, includeTurns: false });
+  requireContract(saved.thread.status.type === 'notLoaded', 'persisted official thread remained loaded');
+  await session.bridge.handle('thread/settings/update', { threadId: autoThread, model: 'jev/auto', effort: 'high' });
+  const switched = await session.bridge.handle('thread/resume', { threadId: autoThread });
+  requireContract(switched.modelProvider === 'jev-router-auto', 'unloaded official thread did not switch to Jev');
+  verifyPermissions(switched);
+  context.checks.push('unloaded-official-provider-switch');
   requireContract(context.windowCount >= context.httpRequests && context.minimumContextWindow >= MIN_CONTEXT
     && context.compactions === 0, 'native context pressure contract changed');
   context.checks.push('context-pressure');

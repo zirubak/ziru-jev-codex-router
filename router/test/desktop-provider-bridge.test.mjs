@@ -74,6 +74,32 @@ test('busy and non-persisted threads are rejected before unsubscribe', async () 
   }
 });
 
+test('an unloaded persisted official chat is resumed before switching to Jev', async () => {
+  const { bridge, calls, thread } = fixture();
+  thread.status = { type: 'notLoaded' };
+  const native = bridge.request;
+  bridge.request = (method, params) => {
+    if (method === 'thread/resume') thread.status = { type: 'idle' };
+    return native(method, params);
+  };
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'jev/auto', effort: 'high' });
+  assert.equal(thread.modelProvider, 'jev-router-auto');
+  assert.ok(calls.findIndex((call) => call.method === 'thread/resume')
+    < calls.findIndex((call) => call.method === 'thread/unsubscribe'));
+});
+
+test('a chat that becomes active during resume is refused before unloading', async () => {
+  const { bridge, calls } = fixture();
+  const native = bridge.request;
+  bridge.request = async (method, params) => {
+    const result = await native(method, params);
+    if (method === 'thread/resume') result.thread.status = { type: 'active' };
+    return result;
+  };
+  await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'jev/auto', effort: 'high' }), /idle/i);
+  assert.equal(calls.some((call) => call.method === 'thread/unsubscribe'), false);
+});
+
 test('failed cross-provider resume restores original provider and reports failure', async () => {
   const { bridge, thread, reject, calls } = fixture();
   reject();
