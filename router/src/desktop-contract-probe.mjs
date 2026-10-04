@@ -151,15 +151,15 @@ async function startResponder(context) {
         requireSafety(size <= MAX_BYTES, 'synthetic HTTP request exceeded the size limit');
         chunks.push(chunk);
       }
+      // Confirm the captured turn still owns this request before parsing, so a
+      // stale or post-failure body is a hard stop even when it is malformed.
+      if (recovery) requireSafety(context.recovery === recovery, 'native sent HTTP outside the bare native recovery turn');
+      else requireSafety(context.expected === expected && !context.error,
+        'native sent HTTP outside an expected qualification turn');
       let body;
       try { body = JSON.parse(Buffer.concat(chunks)); }
       catch { throw new DesktopContractMismatch('native HTTP JSON protocol changed'); }
-      if (recovery) {
-        requireSafety(context.recovery === recovery, 'native sent HTTP outside the bare native recovery turn');
-        return refuseRecovery(context, req, body, res);
-      }
-      requireSafety(context.expected === expected && !context.error,
-        'native sent HTTP outside an expected qualification turn');
+      if (recovery) return refuseRecovery(context, req, body, res);
       verifyHttp(context, req, body);
       respond(res, context.httpRequests);
     })().catch((error) => {

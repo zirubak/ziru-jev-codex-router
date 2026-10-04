@@ -335,6 +335,46 @@ test('responder hard-stops a request whose expected turn changed before its body
   await assertHardStop(errors[0], /outside an expected qualification turn/);
 });
 
+test('responder hard-stops a malformed body whose expected turn changed before it arrived', async (t) => {
+  const { context, errors, open, received } = await responder(t, { expected: expectedTurn() });
+  const stale = open('/v1/responses');
+  await received(1);
+  context.expected = expectedTurn();
+  stale.pending.end('{not json');
+  const result = await stale.response;
+  assert.notEqual(result.status, 200);
+  assert.equal(context.httpRequests, 0);
+  assert.equal(context.expected.received, false);
+  await assertHardStop(errors[0], /outside an expected qualification turn/);
+});
+
+test('responder hard-stops a malformed body whose recovery turn changed before it arrived', async (t) => {
+  const recoveryHeaders = { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required' };
+  const { context, errors, open, received } = await responder(t, { recovery: { threadId: 'thread', mode: 'auto', requests: 0 } });
+  const stale = open('/v1/responses', recoveryHeaders);
+  await received(1);
+  context.recovery = { threadId: 'thread-2', mode: 'auto', requests: 0 };
+  stale.pending.end('{not json');
+  const result = await stale.response;
+  assert.notEqual(result.status, 200);
+  assert.equal(context.recoveryDeniedRequests, 0);
+  assert.equal(context.recovery.requests, 0);
+  await assertHardStop(errors[0], /outside the bare native recovery turn/);
+});
+
+test('responder keeps an already-recorded safety failure when a malformed body arrives', async (t) => {
+  const prior = new Error('earlier qualification safety failure');
+  const { context, errors, open } = await responder(t, { expected: expectedTurn(), error: prior });
+  const late = open('/v1/responses');
+  late.pending.end('{not json');
+  const result = await late.response;
+  assert.notEqual(result.status, 200);
+  assert.equal(context.httpRequests, 0);
+  assert.equal(context.error, prior);
+  await assertHardStop(errors[0], /outside an expected qualification turn/);
+  await assertHardStop(context.error, /earlier qualification safety failure/);
+});
+
 test('responder treats automatic compaction during an expected turn as a safety failure', async (t) => {
   const { context, errors, open } = await responder(t, { expected: expectedTurn() });
   const compact = open('/v1/responses/compact');
