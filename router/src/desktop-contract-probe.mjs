@@ -97,7 +97,7 @@ function respond(res, number) {
 }
 
 function verifyHttp(context, req, body) {
-  requireContract(req.method === 'POST' && req.url === '/v1/responses', 'unexpected HTTP path or automatic compaction');
+  requireContract(req.method === 'POST' && req.url === '/v1/responses', 'unexpected HTTP path');
   const expected = context.expected;
   requireContract(body.model === CARRIER && req.headers['x-jev-selection-mode'] === expected.mode
     && body.reasoning?.effort === expected.effort, 'HTTP carrier, selection mode, or effort changed');
@@ -133,9 +133,16 @@ function refuseRecovery(context, req, body, res) {
 async function startResponder(context) {
   const server = createServer((req, res) => {
     void (async () => {
-      if (!context.recovery) {
-        requireSafety(context.expected && !context.expected.received,
-          'native sent HTTP outside an expected qualification turn');
+      // Bind this request to its turn synchronously, before any await, so
+      // overlapping requests cannot both claim one expected turn.
+      const recovery = context.recovery;
+      const expected = recovery ? null : context.expected;
+      if (!recovery) {
+        const { pathname } = new URL(req.url ?? '/', 'http://127.0.0.1');
+        requireSafety(!/\/compact\/?$/.test(pathname), 'native requested unexpected automatic compaction');
+        requireSafety(expected, 'native sent HTTP outside an expected qualification turn');
+        requireSafety(!expected.reserved, 'native sent more than one HTTP request for one qualification turn');
+        expected.reserved = true;
       }
       const chunks = [];
       let size = 0;
@@ -147,7 +154,12 @@ async function startResponder(context) {
       let body;
       try { body = JSON.parse(Buffer.concat(chunks)); }
       catch { throw new DesktopContractMismatch('native HTTP JSON protocol changed'); }
-      if (context.recovery) return refuseRecovery(context, req, body, res);
+      if (recovery) {
+        requireSafety(context.recovery === recovery, 'native sent HTTP outside the bare native recovery turn');
+        return refuseRecovery(context, req, body, res);
+      }
+      requireSafety(context.expected === expected && !context.error,
+        'native sent HTTP outside an expected qualification turn');
       verifyHttp(context, req, body);
       respond(res, context.httpRequests);
     })().catch((error) => {
@@ -169,6 +181,11 @@ async function startResponder(context) {
     context.config += `\n[model_providers.jev-router-${mode}]\nname = "Jev recovery probe"\nbase_url = ${JSON.stringify(context.provider.base_url)}\nwire_api = "responses"\nrequires_openai_auth = false\nhttp_headers = { "x-jev-desktop-recovery" = "required", "x-jev-selection-mode" = "${mode}" }\n`;
   }
   await writeFile(join(context.directory, 'config.toml'), context.config, { mode: 0o600 });
+}
+
+/** Start only the loopback responder against a caller-built synthetic context. */
+export function startQualificationResponderForTests(context) {
+  return startResponder(context);
 }
 
 class NativeSession {

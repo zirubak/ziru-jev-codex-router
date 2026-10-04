@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { request } from 'node:http';
 import test from 'node:test';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { probeDesktopContract } from '../src/desktop-contract-probe.mjs';
+import { DesktopContractMismatch } from '../src/desktop-compatibility.mjs';
+import { probeDesktopContract, startQualificationResponderForTests } from '../src/desktop-contract-probe.mjs';
+import { planQualifiedDesktopLaunch } from '../src/desktop-launch.mjs';
 
 const carrier = {
   slug: 'gpt-6.1-sol', max_context_window: 872000,
@@ -238,6 +241,121 @@ test('probe times out and terminates an unresponsive native process', { timeout:
   await assert.rejects(probeDesktopContract(native.binary), /native initialize request timed out/);
   const records = (await readFile(native.report, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
   assert.throws(() => process.kill(records.at(-1).pid, 0), { code: 'ESRCH' });
+});
+
+const launchManifest = {
+  version: 1, nativeBinary: '/app/codex', appExecutable: '/app/ChatGPT',
+  appAsar: '/app/app.asar', bridgeBinary: '/router/jev-desktop-codex',
+};
+const expectedTurn = () => ({ mode: 'auto', effort: 'high', markers: ['JEV_CONTRACT_INPUT_1'], collaborationMarker: null, received: false });
+const turnBody = JSON.stringify({ model: 'gpt-6.1-sol', reasoning: { effort: 'high' },
+  input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'JEV_CONTRACT_INPUT_1' }] }],
+  tools: [{ type: 'function', name: 'synthetic' }] });
+const bridgedHeaders = { 'content-type': 'application/json', 'x-jev-selection-mode': 'auto',
+  'x-jev-desktop-recovery': 'bridge-active', 'x-openai-internal-codex-responses-lite': 'true' };
+
+async function responder(t, state = {}) {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-responder-test-'));
+  const errors = [];
+  const context = { directory, config: '', httpRequests: 0, expected: null, recovery: null,
+    recoveryDeniedRequests: 0, recoveryCompactRequests: 0, ...state };
+  context.fail = (error) => { errors.push(error); context.error ??= error; };
+  await startQualificationResponderForTests(context);
+  let seen = 0;
+  const waiters = [];
+  context.server.on('request', () => { seen += 1; for (const waiter of waiters.splice(0)) waiter(); });
+  t.after(async () => {
+    context.server.closeAllConnections();
+    await new Promise((resolve) => context.server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  });
+  const url = new URL(context.provider.base_url);
+  const open = (path, headers = bridgedHeaders) => {
+    const pending = request({ host: url.hostname, port: url.port, path, method: 'POST', headers });
+    const response = new Promise((resolve) => {
+      pending.on('response', (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+      });
+      pending.on('error', (error) => resolve({ status: null, error: error.code }));
+    });
+    pending.flushHeaders();
+    return { pending, response };
+  };
+  const received = async (count) => { while (seen < count) await new Promise((resolve) => waiters.push(resolve)); };
+  return { context, errors, open, received };
+}
+
+async function assertHardStop(error, pattern) {
+  assert.ok(error, 'qualification recorded no failure');
+  assert.ok(!(error instanceof DesktopContractMismatch));
+  assert.notEqual(error.code, 'DESKTOP_INCOMPATIBLE');
+  assert.match(error.message, pattern);
+  await assert.rejects(planQualifiedDesktopLaunch(launchManifest, '/private/manifest.json', {}, '/private/cache',
+    async () => { throw error; }), (rejected) => rejected === error);
+}
+
+test('responder serves one ordinary supported request for an expected turn', async (t) => {
+  const { context, errors, open } = await responder(t, { expected: expectedTurn() });
+  const first = open('/v1/responses');
+  first.pending.end(turnBody);
+  const result = await first.response;
+  assert.equal(result.status, 200);
+  assert.match(result.body, /response\.completed/);
+  assert.deepEqual(errors, []);
+  assert.equal(context.httpRequests, 1);
+  assert.equal(context.expected.received, true);
+});
+
+test('responder hard-stops overlapping requests that reserve one expected turn before their bodies arrive', async (t) => {
+  const { context, errors, open, received } = await responder(t, { expected: expectedTurn() });
+  const first = open('/v1/responses');
+  const second = open('/v1/responses');
+  await received(2);
+  first.pending.end(turnBody);
+  const firstResult = await first.response;
+  second.pending.end(turnBody);
+  const secondResult = await second.response;
+  assert.notEqual(secondResult.status, 200);
+  assert.ok(context.httpRequests <= 1, `served ${context.httpRequests} requests for one turn`);
+  assert.ok([firstResult, secondResult].filter((result) => result.status === 200).length <= 1);
+  await assertHardStop(errors[0], /more than one HTTP request|outside an expected qualification turn/);
+});
+
+test('responder hard-stops a request whose expected turn changed before its body arrived', async (t) => {
+  const { context, errors, open, received } = await responder(t, { expected: expectedTurn() });
+  const stale = open('/v1/responses');
+  await received(1);
+  context.expected = expectedTurn();
+  stale.pending.end(turnBody);
+  const result = await stale.response;
+  assert.notEqual(result.status, 200);
+  assert.equal(context.httpRequests, 0);
+  await assertHardStop(errors[0], /outside an expected qualification turn/);
+});
+
+test('responder treats automatic compaction during an expected turn as a safety failure', async (t) => {
+  const { context, errors, open } = await responder(t, { expected: expectedTurn() });
+  const compact = open('/v1/responses/compact');
+  compact.pending.end(turnBody);
+  const result = await compact.response;
+  assert.notEqual(result.status, 200);
+  assert.equal(context.httpRequests, 0);
+  await assertHardStop(errors[0], /automatic compaction/);
+});
+
+test('responder keeps the intentional recovery refusal for bare native compaction', async (t) => {
+  const { context, errors, open } = await responder(t, { recovery: { threadId: 'thread', mode: 'auto', requests: 0 } });
+  const compact = open('/v1/responses/compact', { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required' });
+  compact.pending.end(turnBody);
+  const result = await compact.response;
+  assert.equal(result.status, 400);
+  assert.equal(JSON.parse(result.body).error.code, 'jev_desktop_recovery_required');
+  assert.deepEqual(errors, []);
+  assert.equal(context.recoveryDeniedRequests, 1);
+  assert.equal(context.recoveryCompactRequests, 1);
+  assert.equal(context.httpRequests, 0);
 });
 
 test('real native qualification covers synthetic routing, settings, context pressure, and persisted resume', {
