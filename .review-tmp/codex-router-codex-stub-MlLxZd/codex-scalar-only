@@ -1,7 +1,0 @@
-#!/bin/sh
-if grep -q multi_agent_v2 "$CODEX_HOME/config.toml" 2>/dev/null; then
-  echo 'Error loading configuration: unknown feature multi_agent_v2' >&2
-  exit 1
-fi
-echo 'Not logged in' >&2
-exit 1

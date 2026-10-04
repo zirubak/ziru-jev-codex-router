@@ -1,3 +1,0 @@
-#!/bin/sh
-echo 'Error loading configuration: invalid type: integer, expected struct AgentRoleToml' >&2
-exit 1
