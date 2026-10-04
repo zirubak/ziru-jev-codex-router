@@ -38,30 +38,42 @@ export async function observeDesktopCompatibility(manifest, manifestPath, qualif
   }
 }
 
-async function main() {
-  if (process.platform !== 'darwin') throw new Error('Desktop integration requires macOS');
-  const manifestPath = process.argv[2];
+export async function launchDesktop({
+  platform = process.platform,
+  manifestPath = process.argv[2],
+  environment = process.env,
+  home = os.homedir(),
+  readManifest = readDesktopManifest,
+  listProcesses = () => execFileSync('/bin/ps', ['-axo', 'comm='], { encoding: 'utf8' }),
+  qualify = qualifyDesktop,
+  activateSession = (session, desktopManifestPath) => execFileSync(
+    session.python, [session.script, 'activate', desktopManifestPath], { stdio: 'pipe' },
+  ),
+  spawnProcess = spawn,
+  writeStderr = (message) => process.stderr.write(message),
+} = {}) {
+  if (platform !== 'darwin') throw new Error('Desktop integration requires macOS');
   if (!manifestPath || !path.isAbsolute(manifestPath)) throw new Error('An absolute Desktop manifest path is required');
-  const manifest = readDesktopManifest(manifestPath, process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex'));
+  const manifest = readManifest(manifestPath, environment.CODEX_HOME ?? path.join(home, '.codex'));
   // Validate paths before passing them to system utilities or reading artifacts.
-  planDesktopLaunch(manifest, manifestPath, process.env, {});
-  const commands = execFileSync('/bin/ps', ['-axo', 'comm='], { encoding: 'utf8' });
+  planDesktopLaunch(manifest, manifestPath, environment, {});
+  const commands = listProcesses();
   if (commands.split('\n').some((line) => line.trim() === manifest.appExecutable)) {
     throw new Error('Codex is already running. Quit it yourself, then open this launcher. No process was stopped.');
   }
-  const observed = await observeDesktopCompatibility(manifest, manifestPath);
+  const observed = await observeDesktopCompatibility(manifest, manifestPath, qualify);
   if (observed.contractVerified && manifest.session) {
-    execFileSync(manifest.session.python, [manifest.session.script, 'activate', manifestPath], { stdio: 'pipe' });
+    activateSession(manifest.session, manifestPath);
   }
-  const plan = planDesktopLaunch(manifest, manifestPath, process.env, observed);
-  if (observed.reason) process.stderr.write(`Desktop compatibility: ${observed.reason}\n`);
-  if (plan.warning) process.stderr.write(`${plan.warning}\n`);
+  const plan = planDesktopLaunch(manifest, manifestPath, environment, observed);
+  if (observed.reason) writeStderr(`Desktop compatibility: ${observed.reason}\n`);
+  if (plan.warning) writeStderr(`${plan.warning}\n`);
   // The caller explicitly starts the app. Installation never invokes this path.
-  const child = spawn(plan.executable, plan.args, { env: plan.env, detached: true, windowsHide: true, stdio: 'ignore' });
-  child.once('error', (error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
+  const child = spawnProcess(plan.executable, plan.args, { env: plan.env, detached: true, windowsHide: true, stdio: 'ignore' });
+  child.once('error', (error) => { writeStderr(`${error.message}\n`); process.exitCode = 1; });
   child.unref();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  main().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
+  launchDesktop().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
 }

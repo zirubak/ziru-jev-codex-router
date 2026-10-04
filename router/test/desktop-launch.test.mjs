@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { observeDesktopCompatibility, planDesktopLaunch } from '../src/desktop-launch.mjs';
+import { launchDesktop, observeDesktopCompatibility, planDesktopLaunch } from '../src/desktop-launch.mjs';
 
 const manifest = {
   version: 1, nativeBinary: '/app/codex', appExecutable: '/app/ChatGPT',
@@ -48,18 +48,30 @@ test('a signed update that passes the current native contract keeps the bridge e
   assert.equal(result.warning, null);
 });
 
-test('failed qualification selects the native recovery launch instead of stopping', async () => {
-  const app = { ...manifest, app: '/app' };
-  const failed = await observeDesktopCompatibility(app, '/private/desktop/manifest.json', async () => {
-    throw new Error('Native contract failed');
+test('failed qualification skips session activation and launches native recovery', async () => {
+  let activated = false;
+  let launch;
+  await launchDesktop({
+    platform: 'darwin',
+    manifestPath: '/private/desktop/manifest.json',
+    environment: originalEnv,
+    readManifest: () => ({ ...manifest, app: '/app', session: { python: '/python', script: '/session.py' } }),
+    listProcesses: () => '',
+    qualify: async () => { throw new Error('Native contract failed'); },
+    activateSession: () => { activated = true; },
+    spawnProcess: (...args) => {
+      launch = args;
+      return { once() {}, unref() {} };
+    },
+    writeStderr() {},
   });
-  assert.equal(failed.contractVerified, false);
-  assert.match(failed.reason, /Native contract failed/);
-  const recovery = planDesktopLaunch(manifest, '/private/desktop/manifest.json', originalEnv, failed);
-  assert.equal(recovery.mode, 'native');
-  assert.equal(recovery.executable, manifest.appExecutable);
-  assert.equal(recovery.env.CODEX_CLI_PATH, undefined);
+  assert.equal(activated, false);
+  assert.equal(launch[0], manifest.appExecutable);
+  assert.deepEqual(launch[1], []);
+  assert.equal(launch[2].env.CODEX_CLI_PATH, undefined);
+  assert.equal(launch[2].env.JEV_DESKTOP_CONFIG, undefined);
   let request;
+  const app = { ...manifest, app: '/app' };
   const passed = await observeDesktopCompatibility(app, '/private/desktop/manifest.json', async (options) => { request = options; });
   assert.deepEqual(request, { app: '/app', cacheDirectory: '/private/desktop/qualifications' });
   assert.equal(passed.contractVerified, true);
