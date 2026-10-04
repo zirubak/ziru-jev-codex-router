@@ -74,3 +74,45 @@ Only portable Linux/fake-native coverage ran here. Signed macOS Desktop/native
 acceptance remains unverified; the macOS-only network and real-native tests
 were skipped. Strict codesign verification of the installed macOS app reports
 its signature modified; the app was not modified, repaired, or restarted.
+
+## Follow-up: stale malformed request bodies
+
+Code commit `3f39c9338b326d5065b03eec84fb944a981bcd3c` (parent `aebcdb2`)
+moves the responder's turn-ownership check ahead of JSON parsing. A request
+whose expected or recovery turn changed while its body was pending, or that
+arrives after a failure is already recorded, now hard-stops as a safety error
+whether its body is valid or malformed. The earlier recorded error is kept.
+Only `router/src/desktop-contract-probe.mjs` and its test changed.
+
+Three regressions were RED on `aebcdb2`: they cover a stale expected turn, a
+changed recovery turn, and a previously recorded safety error, each with a
+malformed body. In each case the old code reported `DesktopContractMismatch`.
+They are GREEN on `3f39c93`, and the tests confirm the errors are not
+`DesktopContractMismatch`/`DESKTOP_INCOMPATIBLE` and that
+`planQualifiedDesktopLaunch` rethrows them. Ordinary response, duplicate,
+valid-body stale, unexpected-compaction and recovery-refusal tests still pass.
+
+Environment: Linux x86_64, Node.js `v22.23.3`, Python `3.12.3`.
+
+| Command | umask | Exit | Result |
+| --- | --- | ---: | --- |
+| `python3 -m unittest discover -s server -p 'test_*.py'` | 0077 | 0 | 283 total: 282 passed, 1 skipped |
+| `python3 -m compileall -q server poc` | 0077 | 0 | Passed |
+| `python3 poc/eval_routing.py` | 0077 | 0 | Passed |
+| `npm run check` (after `npm ci`) | 0022 | 0 | Passed |
+| `node --test test/desktop-contract-probe.test.mjs` | 0002 | 0 | 24 total: 22 passed, 2 skipped (4 repeated runs) |
+| `npm test` (after `npm ci`) | 0022 | 1 | 4,607 total: 4,554 passed, 13 failed, 40 skipped |
+
+An initial `npm test` without `npm ci` had 579 failures, mostly
+`Cannot find package` errors, so it is not counted. The 13 failures are 10 in
+the Control Center harness/Electron suites, including `Codex Router source root
+could not be located` (the `router` checkout directories are `0775`), and three
+Vertex discovery tests that need provider DNS. Rerunning those three files with
+only the two changed files reverted to `aebcdb2` produced the same 13 failures
+(108 total: 94 passed, 13 failed, 1 skipped). This suite is not a clean pass.
+
+The integrated read-only code and Python-specialist review of
+`aebcdb2..3f39c93` approved with no findings and confirmed that no Python files
+changed. The task requested `claude-opus-5.5`, but the reviewer could not
+confirm which backend model it ran on. Signed macOS Desktop acceptance was not
+run.
