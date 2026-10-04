@@ -130,23 +130,27 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
     receiptFile = path.join(cacheDirectory, `${digest(JSON.stringify(expected))}.json`);
     receipt = readReceipt(receiptFile, expected);
   }
+  let failed = false;
+  let failure;
   if (!receipt) {
-    let result;
     try {
       await hook(app);
-      result = await probe(desktopArtifacts(app).nativeBinary);
+      const result = await probe(desktopArtifacts(app).nativeBinary);
       if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) throw new Error('Native contract returned no version evidence');
+      receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
+        checks: result.checks, checkedAt: new Date().toISOString() };
     } catch (error) {
-      throw new DesktopContractError(error?.message ?? String(error), { cause: error });
+      failed = true;
+      failure = error;
     }
-    receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
-      checks: result.checks, checkedAt: new Date().toISOString() };
   }
-  // An updater can replace the bundle while qualification is running.
+  // An updater can replace the bundle while qualification is running, on both
+  // success and failure paths; a change is always a hard stop.
   const after = await identity(app);
   if (JSON.stringify(before) !== JSON.stringify(after) || expected.contractDigest !== await fingerprint()) {
     throw new Error('Desktop or adapter changed during qualification; reopen after the update finishes');
   }
+  if (failed) throw new DesktopContractError(failure?.message ?? String(failure), { cause: failure });
   if (receiptFile) await writeReceipt(receiptFile, receipt);
   return receipt;
 }

@@ -90,8 +90,8 @@ test('failed qualification never publishes a success receipt', async (t) => {
 });
 
 test('artifact or adapter replacement during a probe cannot publish a receipt', async (t) => {
-  for (const change of ['app', 'native', 'adapter']) {
-    await t.test(change, async (subtest) => {
+  for (const change of ['app', 'native', 'adapter']) for (const outcome of ['resolved', 'rejected']) {
+    await t.test(`${change}-${outcome}`, async (subtest) => {
       const { options, dependencies, files } = await fixture(subtest);
       const probe = dependencies.probe;
       let codeDigest = 'a'.repeat(64);
@@ -100,6 +100,7 @@ test('artifact or adapter replacement during a probe cannot publish a receipt', 
         const result = await probe(binary);
         if (change === 'adapter') codeDigest = 'c'.repeat(64);
         else await writeFile(change === 'app' ? files.appAsar : files.nativeBinary, 'replaced during qualification');
+        if (outcome === 'rejected') throw new Error('Native contract failed');
         return result;
       };
       await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
