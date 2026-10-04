@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "mode": "proven",
+  "enabled": [],
+  "disabled": [],
+  "efforts": {
+    "grok-oauth/grok-4.5": "medium"
+  }
+}

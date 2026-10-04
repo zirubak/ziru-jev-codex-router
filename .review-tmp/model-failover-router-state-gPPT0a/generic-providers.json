@@ -1,0 +1,1 @@
+{"version":1,"providers":[{"id":"strict-generic","displayName":"Strict generic fixture","baseUrl":"https://strict.example.test/v1","adapter":"openai-chat","headers":{},"allowPrivate":false,"enabled":true}]}
