@@ -3,7 +3,7 @@ import test from 'node:test';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { DesktopContractMismatch, desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
 import { planQualifiedDesktopLaunch } from '../src/desktop-launch.mjs';
 
 function archive(script = 'process.env.CODEX_CLI_PATH', entryOverrides = {}) {
@@ -114,13 +114,13 @@ test('failed qualification remains a hard stop when artifacts or adapter change'
         if (failure === 'hook') {
           dependencies.verifyLaunchHook = async () => {
             await mutate();
-            throw new Error('Native launch hook changed');
+            throw new DesktopContractMismatch('Native launch hook changed');
           };
         } else {
           dependencies.probe = async () => {
             await mutate();
             if (failure === 'missing-version') return { checks: [] };
-            throw new Error('Native contract changed');
+            throw new DesktopContractMismatch('Native contract changed');
           };
         }
         const manifest = {
@@ -140,9 +140,9 @@ test('unchanged incompatible signed builds select native recovery for each contr
   for (const failure of ['hook', 'probe', 'missing-version']) {
     await t.test(failure, async (subtest) => {
       const { options, dependencies, files } = await fixture(subtest);
-      if (failure === 'hook') dependencies.verifyLaunchHook = async () => { throw new Error('Unsupported launch hook'); };
+      if (failure === 'hook') dependencies.verifyLaunchHook = async () => { throw new DesktopContractMismatch('Unsupported launch hook'); };
       else dependencies.probe = async () => failure === 'probe'
-        ? Promise.reject(new Error('Unsupported native contract'))
+        ? Promise.reject(new DesktopContractMismatch('Unsupported native contract'))
         : { checks: [] };
       const manifest = {
         version: 1, app: options.app, nativeBinary: files.nativeBinary,
@@ -153,6 +153,25 @@ test('unchanged incompatible signed builds select native recovery for each contr
         options.cacheDirectory, () => qualifyDesktop(options, dependencies));
       assert.equal(result.plan.mode, 'native');
       assert.equal(result.compatibilityError.code, 'DESKTOP_INCOMPATIBLE');
+      assert.deepEqual(await readdir(options.cacheDirectory), []);
+    });
+  }
+});
+
+test('operational and cleanup failures propagate without enabling native recovery', async (t) => {
+  for (const stage of ['hook', 'probe']) {
+    await t.test(stage, async (subtest) => {
+      const { options, dependencies, files } = await fixture(subtest);
+      const failure = Object.assign(new Error(`${stage} cleanup failed`), { code: 'EIO' });
+      if (stage === 'hook') dependencies.verifyLaunchHook = async () => { throw failure; };
+      else dependencies.probe = async () => { throw failure; };
+      const manifest = {
+        version: 1, app: options.app, nativeBinary: files.nativeBinary,
+        appExecutable: join(options.app, 'Contents/MacOS/ChatGPT'), appAsar: files.appAsar,
+        bridgeBinary: '/router/bin/jev-desktop-codex',
+      };
+      await assert.rejects(planQualifiedDesktopLaunch(manifest, '/private/manifest.json', {},
+        options.cacheDirectory, () => qualifyDesktop(options, dependencies)), (error) => error === failure);
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
   }

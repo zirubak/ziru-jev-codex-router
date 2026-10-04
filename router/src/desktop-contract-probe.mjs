@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { promisify, isDeepStrictEqual } from 'node:util';
 import { DesktopProviderBridge } from './desktop-provider-bridge.mjs';
 import { PrivateRouteState } from './desktop-provider-state.mjs';
+import { DesktopContractMismatch } from './desktop-compatibility.mjs';
 
 const run = promisify(execFile);
 const CARRIER = 'gpt-6.1-sol';
@@ -27,24 +28,29 @@ function failure(reason) {
 }
 
 function requireContract(condition, reason) {
+  if (!condition) throw new DesktopContractMismatch(reason);
+}
+
+function requireSafety(condition, reason) {
   if (!condition) throw failure(reason);
 }
 
 async function bundledMetadata(context) {
   const options = { env: context.env, cwd: context.directory, timeout: REQUEST_TIMEOUT, killSignal: 'SIGKILL', maxBuffer: MAX_BYTES, encoding: 'utf8' };
-  let nativeVersion;
+  const versionCommand = nativeCommand(context.binary, ['--version']);
+  const nativeVersion = (await run(versionCommand.file, versionCommand.args, options)).stdout.trim();
+  requireContract(/^codex-cli [0-9][\w.+-]{0,100}$/.test(nativeVersion), 'native version protocol changed');
+  const catalogCommand = nativeCommand(context.binary, ['debug', 'models', '--bundled']);
+  const catalogText = (await run(catalogCommand.file, catalogCommand.args, options)).stdout;
   let catalog;
-  try {
-    const versionCommand = nativeCommand(context.binary, ['--version']);
-    nativeVersion = (await run(versionCommand.file, versionCommand.args, options)).stdout.trim();
-    requireContract(/^codex-cli [0-9][\w.+-]{0,100}$/.test(nativeVersion), 'native version protocol changed');
-    const catalogCommand = nativeCommand(context.binary, ['debug', 'models', '--bundled']);
-    catalog = JSON.parse((await run(catalogCommand.file, catalogCommand.args, options)).stdout);
-  } catch (error) {
-    if (error.message.startsWith('Jev Desktop compatibility:')) throw error;
-    throw failure('bundled native metadata could not be read within the time limit');
+  try { catalog = JSON.parse(catalogText); }
+  catch (error) {
+    if (error instanceof SyntaxError) throw new DesktopContractMismatch('bundled native catalog protocol changed');
+    throw error;
   }
-  const carrier = catalog.models?.find((model) => model.slug === CARRIER);
+  requireContract(catalog && typeof catalog === 'object' && Array.isArray(catalog.models),
+    'bundled native catalog protocol changed');
+  const carrier = catalog.models.find((model) => model?.slug === CARRIER);
   requireContract(carrier?.max_context_window >= 872000
     && EFFORTS.every((effort) => carrier.supported_reasoning_levels?.some((entry) => entry.effort === effort)),
   'carrier metadata does not preserve the required context and Manual efforts');
@@ -92,13 +98,13 @@ function verifyHttp(context, req, body) {
 
 function refuseRecovery(context, req, body, res) {
   const recovery = context.recovery;
-  requireContract(req.method === 'POST' && ['/v1/responses', '/v1/responses/compact'].includes(req.url),
+  requireSafety(req.method === 'POST' && ['/v1/responses', '/v1/responses/compact'].includes(req.url),
     'bare native recovery used an unexpected HTTP path');
-  requireContract(req.headers['x-jev-desktop-recovery'] === 'required'
+  requireSafety(req.headers['x-jev-desktop-recovery'] === 'required'
     && req.headers['x-jev-selection-mode'] === recovery.mode && body.model === CARRIER,
   'bare native did not preserve the persisted recovery guard');
   recovery.requests += 1;
-  requireContract(recovery.requests <= 16, 'bare native repeatedly retried the recovery refusal');
+  requireSafety(recovery.requests <= 16, 'bare native repeatedly retried the recovery refusal');
   context.recoveryDeniedRequests += 1;
   if (req.url.endsWith('/compact')) context.recoveryCompactRequests += 1;
   // Exercise the router's refusal response without invoking any model or upstream.
@@ -114,17 +120,17 @@ async function startResponder(context) {
       let size = 0;
       for await (const chunk of req) {
         size += chunk.length;
-        requireContract(size <= MAX_BYTES, 'synthetic HTTP request exceeded the size limit');
+        requireSafety(size <= MAX_BYTES, 'synthetic HTTP request exceeded the size limit');
         chunks.push(chunk);
       }
       let body;
       try { body = JSON.parse(Buffer.concat(chunks)); }
-      catch { throw failure('native HTTP JSON protocol changed'); }
+      catch { throw new DesktopContractMismatch('native HTTP JSON protocol changed'); }
       if (context.recovery) return refuseRecovery(context, req, body, res);
       verifyHttp(context, req, body);
       respond(res, context.httpRequests);
     })().catch((error) => {
-      context.fail(error.message.startsWith('Jev Desktop compatibility:') ? error : failure('synthetic HTTP request failed'));
+      context.fail(error);
       if (!res.headersSent) res.writeHead(400);
       res.end();
     });
@@ -133,7 +139,7 @@ async function startResponder(context) {
   server.headersTimeout = REQUEST_TIMEOUT;
   context.server = server;
   await new Promise((resolve, reject) => {
-    server.once('error', () => reject(failure('loopback qualification listener could not start')));
+    server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
   context.provider = { name: 'Jev isolated compatibility probe', base_url: `http://127.0.0.1:${server.address().port}/v1`,
@@ -159,15 +165,15 @@ class NativeSession {
     this.exited = new Promise((resolve) => { this.resolveExit = resolve; });
     this.bridge = new DesktopProviderBridge({ request: this.request.bind(this), provider: context.provider,
       state: new PrivateRouteState(join(context.directory, 'private-routes')) });
-    this.child.on('error', () => {
-      this.fail(failure('native process could not start'));
+    this.child.on('error', (error) => {
+      this.fail(error);
       this.resolveExit();
     });
     this.child.on('exit', () => {
       if (!this.closing) this.fail(failure('native process exited before qualification completed'));
       this.resolveExit();
     });
-    this.child.stdin.on('error', () => { if (!this.closing) this.fail(failure('native protocol input closed')); });
+    this.child.stdin.on('error', (error) => { if (!this.closing) this.fail(error); });
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (data) => this.consume(data));
   }
@@ -189,8 +195,13 @@ class NativeSession {
     while ((newline = this.buffer.indexOf('\n')) !== -1) {
       const line = this.buffer.slice(0, newline);
       this.buffer = this.buffer.slice(newline + 1);
-      try { this.receive(JSON.parse(line)); }
-      catch { this.fail(failure('native JSON protocol changed')); }
+      let message;
+      try { message = JSON.parse(line); }
+      catch { this.fail(new DesktopContractMismatch('native JSON protocol changed')); }
+      if (!this.error) {
+        try { this.receive(message); }
+        catch (error) { this.fail(error); }
+      }
       if (this.error) return;
     }
   }
@@ -207,7 +218,10 @@ class NativeSession {
       requireContract(pending, 'native response identity changed');
       clearTimeout(pending.timer);
       this.pending.delete(message.id);
-      if (message.error) pending.reject(failure(`native ${pending.method} request was rejected`));
+      if (message.error) {
+        if (message.error.code === -32601) pending.reject(new DesktopContractMismatch(`native ${pending.method} method is unavailable`));
+        else pending.reject(failure(`native ${pending.method} request was rejected`));
+      }
       else pending.resolve(message.result);
       return;
     }
@@ -290,26 +304,40 @@ class NativeSession {
     for (const entry of this.pending.values()) clearTimeout(entry.timer);
     for (const entry of this.waiters) clearTimeout(entry.timer);
     this.child.stdin.destroy();
-    this.terminateGroup('SIGTERM');
-    const timer = setTimeout(() => this.terminateGroup('SIGKILL'), 1000);
-    try { await this.exited; }
+    let cleanupError;
+    try { this.terminateGroup('SIGTERM'); }
+    catch (error) { cleanupError = error; }
+    const timer = setTimeout(() => {
+      try { this.terminateGroup('SIGKILL'); }
+      catch (error) { cleanupError ??= error; }
+    }, 1000);
+    let exitTimer;
+    try {
+      await Promise.race([this.exited, new Promise((resolve) => { exitTimer = setTimeout(resolve, 2000); })]);
+      if (this.child.pid && this.child.exitCode == null && this.child.signalCode == null) {
+        cleanupError ??= new Error('Private native process did not exit after termination');
+      }
+    }
     finally {
       clearTimeout(timer);
-      this.terminateGroup('SIGKILL');
+      clearTimeout(exitTimer);
+      try { this.terminateGroup('SIGKILL'); }
+      catch (error) { cleanupError ??= error; }
       this.closed = true;
     }
+    if (cleanupError) throw cleanupError;
   }
 
   terminateGroup(signal) {
     if (!this.child.pid) return;
     if (process.platform === 'win32') { this.child.kill(signal); return; }
     try { process.kill(-this.child.pid, signal); }
-    catch (error) { if (error.code !== 'ESRCH') throw failure(`private native process group could not be terminated (${error.code})`); }
+    catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
 }
 
 function verifyPermissions(result) {
-  requireContract(result.sandbox?.type === 'readOnly' && result.approvalPolicy === 'never'
+  requireSafety(result.sandbox?.type === 'readOnly' && result.approvalPolicy === 'never'
     && result.activePermissionProfile?.id === ':read-only', 'read-only permissions were not preserved');
 }
 
@@ -322,7 +350,7 @@ async function settings(session, threadId, mode, effort) {
   requireContract(raw?.model === CARRIER && mapped?.model === `jev/${mode}` && mapped.effort === effort
     && mapped.collaborationMode?.settings?.model === `jev/${mode}` && mapped.modelProvider === `jev-router-${mode}`,
   'nested settings notification lost Jev identity or effort');
-  requireContract(raw.sandboxPolicy?.type === 'readOnly' && isDeepStrictEqual(mapped.sandboxPolicy, raw.sandboxPolicy),
+  requireSafety(raw.sandboxPolicy?.type === 'readOnly' && isDeepStrictEqual(mapped.sandboxPolicy, raw.sandboxPolicy),
     'nested settings notification changed read-only permissions');
 }
 
@@ -353,7 +381,7 @@ async function recoveryTurn(session, threadId, mode) {
     await session.request('turn/start', { threadId,
       input: [{ type: 'text', text: 'Synthetic recovery guard check. Do not call tools.', text_elements: [] }] });
     const notice = await session.waitNotice('turn/completed', threadId, before);
-    requireContract(notice.raw.params.turn?.status === 'failed' && context.recovery.requests > 0
+    requireSafety(notice.raw.params.turn?.status === 'failed' && context.recovery.requests > 0
       && context.recoveryModelOutputs === 0, 'bare native recovery did not stop after the HTTP refusal');
     if (context.error) throw context.error;
   } finally { context.recovery = null; }
@@ -393,7 +421,7 @@ async function exercise(context) {
     requireContract(bare.model === CARRIER && bare.modelProvider === `jev-router-${mode}`, 'bare native could not reopen a persisted Jev thread');
     verifyPermissions(bare);
   }
-  requireContract(context.httpRequests === previousRequests, 'bare native recovery resume sent an inference request');
+  requireSafety(context.httpRequests === previousRequests, 'bare native recovery resume sent an inference request');
   context.checks.push('bare-native-recovery-resume');
   for (const { threadId, mode } of threads) await recoveryTurn(session, threadId, mode);
   context.checks.push('bare-native-recovery-http-guard');
@@ -413,8 +441,9 @@ async function exercise(context) {
   requireContract(official.model === CARRIER && official.modelProvider === 'openai', 'official provider was not restored');
   verifyPermissions(official);
   context.checks.push('official-provider-restored');
-  requireContract(context.windowCount >= context.httpRequests && context.minimumContextWindow >= MIN_CONTEXT
-    && context.compactions === 0, 'native context pressure contract changed');
+  requireContract(context.windowCount >= context.httpRequests && context.minimumContextWindow >= MIN_CONTEXT,
+    'native context pressure contract changed');
+  requireSafety(context.compactions === 0, 'native context pressure caused automatic compaction');
   context.checks.push('context-pressure');
 }
 
@@ -435,23 +464,26 @@ export async function probeDesktopContract(nativeBinary) {
     context.checks.push('bundled-carrier-metadata');
     await startResponder(context);
     await exercise(context);
-    requireContract(await readFile(join(directory, 'config.toml'), 'utf8') === context.config
+    requireSafety(await readFile(join(directory, 'config.toml'), 'utf8') === context.config
       && await readFile(join(directory, 'official-models.json'), 'utf8') === context.catalogData, 'qualification changed the official local configuration');
     if (context.error) throw context.error;
     return { nativeVersion, checks: context.checks, httpRequests: context.httpRequests, compactions: context.compactions,
       minimumContextWindow: context.minimumContextWindow, recoveryDeniedRequests: context.recoveryDeniedRequests,
       recoveryCompactRequests: context.recoveryCompactRequests, recoveryCompactionAttempts: context.recoveryCompactionAttempts,
       recoveryModelOutputs: context.recoveryModelOutputs };
-  } catch (error) {
-    if (error.message.startsWith('Jev Desktop compatibility:')) throw error;
-    throw failure('native contract could not be verified');
   } finally {
     clearTimeout(deadline);
-    await context.session?.close();
+    let cleanupError;
+    try { await context.session?.close(); }
+    catch (error) { cleanupError = error; }
     if (context.server) {
-      context.server.closeAllConnections();
-      await new Promise((resolve) => context.server.close(resolve));
+      try {
+        context.server.closeAllConnections();
+        await new Promise((resolve) => context.server.close(resolve));
+      } catch (error) { cleanupError ??= error; }
     }
-    await rm(directory, { recursive: true, force: true });
+    try { await rm(directory, { recursive: true, force: true }); }
+    catch (error) { cleanupError ??= error; }
+    if (cleanupError) throw cleanupError;
   }
 }
