@@ -1,5 +1,8 @@
+import { isNativeCheckpointSummary, manualCheckpointEffort } from "./native-checkpoint-summary.mjs";
+import { PrivateRouteState } from "./desktop-provider-state.mjs";
 import { readFileSync } from "node:fs";
 import http from "node:http";
+import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
   brotliDecompressSync,
@@ -92,6 +95,7 @@ import {
   exactRouteProbeRequested,
 } from "./exact-route-probe.mjs";
 import {
+  CODEX_HOME,
   MERGED_CATALOG_PATH,
   NATIVE_CATALOG_PATH,
   PORTS,
@@ -4194,9 +4198,11 @@ async function handleResponses(request, response, requestUrl) {
       // transport check above must pass before this per-request mapping.
       // Native pre-turn compaction retains the previous turn's model. Old
       // chats recorded virtual Jev aliases before the bridge used a carrier.
+      // Unknown historical metadata also uses a tool-free local checkpoint
+      // summary on the ordinary Responses endpoint, without a V2 trigger.
       // Only a bridged compaction may carry that historical alias; the active
       // provider marker still owns the selected mode, including mode switches.
-      const historicalJevCompaction = (compactV1 || compactV2)
+      const historicalJevCompaction = (compactV1 || compactV2 || isNativeCheckpointSummary(payload))
         && request.headers["x-jev-desktop-recovery"] === "bridge-active"
         && ["jev/auto", "jev/manual"].includes(payload?.model);
       if (!["auto", "manual"].includes(jevMode)
@@ -4206,6 +4212,21 @@ async function handleResponses(request, response, requestUrl) {
           message: "Jev selection requires one auto/manual mode and its supported native model.",
         } });
         return;
+      }
+      if (jevMode === "manual" && isNativeCheckpointSummary(payload)
+          && payload.reasoning?.effort === "auto") {
+        try {
+          const effort = manualCheckpointEffort(payload, threadId => new PrivateRouteState(
+            join(CODEX_HOME, "jev-desktop-thread-routes"), { create: false },
+          ).read(threadId));
+          payload.reasoning = { ...payload.reasoning, effort };
+        } catch {
+          writeJson(response, 400, { error: {
+            type: "invalid_request_error", code: "invalid_jev_checkpoint_selection",
+            message: "Current Manual checkpoint effort cannot be verified. Reopen this chat to confirm its selection. No request was sent.",
+          } });
+          return;
+        }
       }
       payload.model = `jev/${jevMode}`;
       delete request.headers["x-jev-selection-mode"];

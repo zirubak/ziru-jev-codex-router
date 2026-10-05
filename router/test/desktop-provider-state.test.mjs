@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, chmodSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, chmodSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
@@ -71,4 +71,16 @@ test('official effort uses native non-empty string contract while Jev stays boun
   for (const mode of ['auto', 'manual']) {
     assert.throws(() => state.write(mode, { ...route, mode, model: `jev/${mode}`, effort: 'ultra' }, null), /record/);
   }
+});
+
+
+test('read-only state opens existing records and never creates a missing directory', (t) => {
+  const { directory } = fixture(t);
+  assert.throws(() => new PrivateRouteState(directory, { create: false }), { code: 'ENOENT' });
+  assert.equal(existsSync(directory), false);
+  const state = new PrivateRouteState(directory);
+  const saved = state.write('thread-1', route, null);
+  const original = readFileSync(state.path('thread-1'));
+  assert.deepEqual(new PrivateRouteState(directory, { create: false }).read('thread-1'), saved);
+  assert.deepEqual(readFileSync(state.path('thread-1')), original);
 });

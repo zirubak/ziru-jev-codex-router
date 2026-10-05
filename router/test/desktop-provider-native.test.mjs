@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { callerBaseUrl } from '../src/caller-auth.mjs';
 import { DesktopProviderBridge } from '../src/desktop-provider-bridge.mjs';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
 
@@ -33,7 +34,61 @@ function respond(res, model, number, compaction) {
   res.end();
 }
 
-async function fixture(t) {
+async function startRouterRelay(t, directory, upstream) {
+  const probe = createServer();
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+  const state = await mkdtemp(join(directory, 'router-state-'));
+  const providers = join(state, 'providers.json');
+  const models = join(state, 'models.json');
+  await writeFile(providers, JSON.stringify({ version: 1, providers: [{
+    id: 'jev', displayName: 'Fixture Jev', baseUrl: upstream,
+    adapter: 'openai-responses', allowPrivate: true, enabled: true, headers: {},
+  }] }));
+  await writeFile(models, JSON.stringify({ version: 1, models: ['auto', 'manual'].map(mode => ({
+    slug: `jev/${mode}`, gatewayModel: `jev-${mode}`, upstreamModel: mode,
+    provider: 'jev', listed: true, displayName: 'Fixture Jev', defaultEffort: 'high',
+    description: 'Synthetic native compaction relay', compHash: `jev-${mode}-native-test`, priority: 95,
+    reasoningLevels: [{ effort: 'high', description: 'Fixture effort' }],
+    inputModalities: ['text'], contextWindow: 872000, autoCompact: 740000,
+  })) }));
+  const key = 'native-relay-synthetic-caller-capability';
+  const child = spawn(process.execPath, [process.env.JEV_DESKTOP_TEST_ROUTER_SOURCE ?? new URL('../src/router.mjs', import.meta.url).pathname], {
+    env: { ...process.env, CODEX_HOME: directory, HOME: directory,
+      MODEL_ROUTER_STATE_DIR: state, MODEL_ROUTER_GENERIC_PROVIDERS: providers,
+      MODEL_ROUTER_USER_MODELS: models, CODEX_ROUTER_CALLER_KEY: key,
+      CODEX_ROUTER_INTERNAL_KEY: 'native-relay-synthetic-internal-capability',
+      CODEX_ROUTER_PORT: String(port), CODEX_ROUTER_SHOW_ALL_MODELS: '1', CODEX_ROUTER_QUIET: '1',
+      CODEX_ROUTER_GATEWAY_BASE_URL: upstream, CODEX_ROUTER_API_BASE_URL: upstream,
+      CODEX_NATIVE_BASE_URL: upstream }, stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let errors = '';
+  child.stderr.on('data', chunk => { errors += chunk; });
+  t.after(async () => {
+    if (child.exitCode == null && child.signalCode == null) {
+      child.kill('SIGTERM');
+      await new Promise(resolve => child.once('exit', resolve));
+    }
+  });
+  const base = callerBaseUrl(port, key);
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (child.exitCode != null) throw new Error(errors);
+    try {
+      const response = await fetch(`${base}/models`);
+      if (response.ok) {
+        const models = await response.json();
+        assert.ok(Array.isArray(models.data), 'Fixture router must publish a valid catalog response');
+        return base;
+      }
+    } catch (error) { if (error.code === 'ERR_ASSERTION') throw error; /* Wait for bind. */ }
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error(`Fixture router did not start: ${errors}`);
+}
+
+async function fixture(t, { relay = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'jev-native-pressure-'));
   const original = await readFile(catalog);
   const parsed = JSON.parse(original);
@@ -45,16 +100,50 @@ async function fixture(t) {
   const config = `model = "gpt-6.1-sol"\nmodel_catalog_json = ${JSON.stringify(localCatalog)}\n`;
   await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   const calls = [];
+  const upstreamCalls = [];
+  let relayBase;
   const server = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks));
     const additionalTools = body.input?.some((item) => item.type === 'additional_tools');
     const compaction = !(body.tools?.length || additionalTools);
-    calls.push({ model: body.model, mode: req.headers['x-jev-selection-mode'], lite: req.headers['x-openai-internal-codex-responses-lite'], effort: body.reasoning?.effort, additionalTools, compaction });
+    if (req.url.startsWith('/upstream/')) {
+      const selection = execFileSync('python3', ['-c',
+        'import json,sys; from selection_policy import resolve_selection; print(json.dumps(resolve_selection(json.load(sys.stdin)).state()))'], {
+        cwd: new URL('../../server/', import.meta.url), input: JSON.stringify(body), encoding: 'utf8',
+      });
+      upstreamCalls.push({ model: body.model, input: body.input, selection: JSON.parse(selection) });
+      respond(res, body.model, upstreamCalls.length, compaction);
+      return;
+    }
+    calls.push({ path: req.url, terminalType: body.input?.at(-1)?.type,
+      bridge: req.headers['x-jev-desktop-recovery'], model: body.model,
+      mode: req.headers['x-jev-selection-mode'], lite: req.headers['x-openai-internal-codex-responses-lite'],
+      effort: body.reasoning?.effort, additionalTools, compaction });
+    if (relayBase && req.headers['x-jev-selection-mode']) {
+      const headers = { ...req.headers };
+      delete headers.host;
+      delete headers['content-length'];
+      const forwarded = await fetch(`${relayBase}/responses`, {
+        method: 'POST', headers, body: JSON.stringify(body),
+      });
+      res.writeHead(forwarded.status, { 'content-type': forwarded.headers.get('content-type') });
+      for await (const chunk of forwarded.body) res.write(chunk);
+      res.end();
+      return;
+    }
     respond(res, body.model, calls.length, compaction);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    if (relay) relayBase = await startRouterRelay(t, directory, `http://127.0.0.1:${server.address().port}/upstream/v1`);
+  } catch (error) {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
     assert.equal(await readFile(join(directory, 'config.toml'), 'utf8'), config);
@@ -62,7 +151,7 @@ async function fixture(t) {
     assert.deepEqual(await readFile(catalog), original);
     await rm(directory, { recursive: true, force: true });
   });
-  return { directory, calls, provider: { name: 'Local fixture', base_url: `http://127.0.0.1:${server.address().port}/v1`, wire_api: 'responses', requires_openai_auth: false } };
+  return { directory, calls, upstreamCalls, provider: { name: 'Local fixture', base_url: `http://127.0.0.1:${server.address().port}/v1`, wire_api: 'responses', requires_openai_auth: false } };
 }
 
 async function connect(context) {
@@ -73,6 +162,7 @@ async function connect(context) {
   const child = spawn(binary, ['app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
   const pending = new Map();
   const notices = [];
+  const errors = [];
   const settings = [];
   let settingsWaiter;
   let settingsTimer;
@@ -99,12 +189,13 @@ async function connect(context) {
       }
       if (message.method === 'thread/tokenUsage/updated') notices.push({ window: message.params.tokenUsage.modelContextWindow });
       if (message.method === 'item/started' && message.params.item.type === 'contextCompaction') notices.push({ compaction: true });
+      if (message.method === 'error') errors.push(message.params.error);
       if (message.method === 'turn/completed') turnDone?.(message.params.turn.status);
     }
   });
   await request('initialize', { clientInfo: { name: 'jev_pressure_fixture', version: '1' }, capabilities: { experimentalApi: true } });
   child.stdin.write('{"method":"initialized"}\n');
-  const bridge = new DesktopProviderBridge({ request, provider: context.provider, state: new PrivateRouteState(join(context.directory, 'private-routes')) });
+  const bridge = new DesktopProviderBridge({ request, provider: context.provider, state: new PrivateRouteState(join(context.directory, 'jev-desktop-thread-routes')) });
   return {
     request, bridge, notices, settings,
     nextSettings(threadId) {
@@ -121,7 +212,7 @@ async function connect(context) {
       });
       try {
         await call('turn/start', { ...params, input: [{ type: 'text', text: 'Synthetic fixture. Do not call tools.', text_elements: [] }] });
-        assert.equal(await done, 'completed');
+        assert.equal(await done, 'completed', JSON.stringify(errors.at(-1)));
       } finally { clearTimeout(timer); }
     },
     async close() {
@@ -267,27 +358,39 @@ test('bundled native settings accept official Ultra after Jev with unchanged not
 });
 
 
-test('legacy alias history uses the previous alias only for compaction after rebind', {
+for (const historical of ['auto', 'manual']) {
+for (const selected of ['auto', 'manual']) {
+test(`legacy ${historical} compaction and ${selected} next turn complete through the actual router`, {
   skip: !binary || !catalog, timeout: 90000,
 }, async (t) => {
-  const context = await fixture(t);
+  const context = await fixture(t, { relay: true });
   const connection = await connect(context);
   try {
     const legacy = await connection.request('thread/start', {
-      model: 'jev/auto', modelProvider: 'legacy-jev', cwd: context.directory,
+      model: `jev/${historical}`, modelProvider: 'legacy-jev', cwd: context.directory,
       permissions: ':read-only', approvalPolicy: 'never',
       config: { model_providers: { 'legacy-jev': context.provider } },
     });
     await connection.turn(connection.request, { threadId: legacy.thread.id, effort: 'high' });
     context.calls.length = 0;
     await connection.bridge.handle('thread/settings/update', {
-      threadId: legacy.thread.id, model: 'jev/auto', effort: 'high',
+      threadId: legacy.thread.id, model: `jev/${selected}`, effort: 'high',
     });
-    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId: legacy.thread.id });
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), {
+      threadId: legacy.thread.id, ...(selected === 'manual' ? { effort: 'low' } : {}),
+    });
     assert.ok(context.calls.length > 0);
+    assert.equal(context.calls[0].path, '/v1/responses');
+    assert.equal(context.calls[0].terminalType, 'message');
+    assert.equal(context.upstreamCalls.length, 2);
+    assert.deepEqual(context.upstreamCalls.map(call => call.model), [`jev-${selected}`, `jev-${selected}`]);
+    assert.equal(connection.bridge.state.read(legacy.thread.id).phase, 'confirmed');
+    if (selected === 'manual') assert.equal(context.upstreamCalls[0].selection.user_effort, 'low');
     assert.deepEqual(context.calls.map(({ model, mode, compaction }) => ({ model, mode, compaction })), [
-      { model: 'jev/auto', mode: 'auto', compaction: true },
-      { model: 'gpt-6.1-sol', mode: 'auto', compaction: false },
+      { model: `jev/${historical}`, mode: selected, compaction: true },
+      { model: 'gpt-6.1-sol', mode: selected, compaction: false },
     ]);
   } finally { await connection.close(); }
 });
+}
+}

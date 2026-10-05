@@ -1,3 +1,4 @@
+import { PrivateRouteState } from "../src/desktop-provider-state.mjs";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import http from "node:http";
@@ -9580,6 +9581,10 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
     json(response, 200, { output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "The fixture conversation and tool results are preserved in this checkpoint." }] }] });
   });
   const testRoot = mkdtempSync(path.join(os.tmpdir(), "routing-jev-canonical-"));
+  const codexHome = path.join(testRoot, "codex-home");
+  const selections = new PrivateRouteState(path.join(codexHome, "jev-desktop-thread-routes"));
+  const summaryThread = "native-checkpoint-fixture";
+  selections.write(summaryThread, { mode: "manual", model: "jev/manual", effort: "high", phase: "confirmed" }, null);
   const stateDir = path.join(testRoot, "state");
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(
@@ -9629,6 +9634,7 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
   }) : null;
   const routerPort = await openPort();
   const router = run("router.mjs", {
+    CODEX_HOME: codexHome,
     CODEX_ROUTER_PORT: String(routerPort),
     CODEX_NATIVE_BASE_URL: `http://127.0.0.1:${gateway.port}/native`,
     CODEX_ROUTER_GATEWAY_BASE_URL: `http://127.0.0.1:${gateway.port}/v1`,
@@ -9731,6 +9737,27 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
           assert.equal(gatewayHeaders.at(-1)["x-jev-desktop-recovery"], undefined);
         }
       }
+      const summaryInput = [
+        ...input.filter(item => item.type !== "additional_tools"),
+        { type: "message", role: "user", content: [{ type: "input_text",
+          text: "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary." }] },
+      ];
+      for (const historical of ["jev/auto", "jev/manual"]) {
+        const summary = await fetch(`${routerBase(routerPort)}/responses`, {
+          method: "POST", headers: { "Content-Type": "application/json",
+            "x-jev-selection-mode": mode, "x-jev-desktop-recovery": "bridge-active" },
+          body: JSON.stringify({ model: historical, stream: false, input: summaryInput,
+            tools: [], tool_choice: "auto", reasoning: { effort: "auto" },
+            prompt_cache_key: summaryThread, client_metadata: { thread_id: summaryThread } }),
+        });
+        assert.equal(summary.status, 200, await summary.clone().text());
+        assert.equal((await summary.json()).output[0].type, "message", "Native local compaction needs ordinary summary text");
+        assert.equal(gatewayBodies.at(-1).model, `jev-${mode}`);
+        assert.equal(gatewayBodies.at(-1).reasoning.effort, mode === "manual" ? "high" : "auto");
+        assert.deepEqual(gatewayBodies.at(-1).input, summaryInput, "Local summary must receive full canonical evidence");
+        assert.equal(gatewayHeaders.at(-1)["x-jev-selection-mode"], undefined);
+        assert.equal(gatewayHeaders.at(-1)["x-jev-desktop-recovery"], undefined);
+      }
       const beforeInvalid = gatewayBodies.length;
       for (const [marker, model, recovery, endpoint, compactInput] of [
         [mode, "jev/auto", "bridge-active", "responses", input],
@@ -9747,6 +9774,42 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
         });
         assert.equal(refused.status, 400);
         assert.equal((await refused.json()).error.code, "invalid_jev_selection");
+      }
+      for (const invalid of [
+        { tools: [{ type: "function", name: "execute" }] },
+        { input: [...summaryInput, { type: "message", role: "user", content: [] }] },
+        { input: [{ type: "additional_tools", tools: [] }, ...summaryInput] },
+        { model: "gpt-6-astra" },
+        { recovery: undefined },
+        { marker: "auto, manual" },
+      ]) {
+        const { recovery = "bridge-active", marker = mode, ...changes } = invalid;
+        const refused = await fetch(`${routerBase(routerPort)}/responses`, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-jev-selection-mode": marker,
+            ...(Object.hasOwn(invalid, "recovery") ? {} : { "x-jev-desktop-recovery": recovery }) },
+          body: JSON.stringify({ model: "jev/auto", input: summaryInput, tools: [], tool_choice: "auto", ...changes }),
+        });
+        assert.equal(refused.status, 400);
+        assert.equal((await refused.json()).error.code, "invalid_jev_selection");
+      }
+      if (mode === "manual") {
+        for (const [state, identity] of [
+          [{ phase: "pending" }, summaryThread],
+          [{ mode: "auto", model: "jev/auto" }, summaryThread],
+          [{ effort: null }, summaryThread],
+          [{}, "unknown-thread"],
+        ]) {
+          const previous = selections.read(summaryThread);
+          selections.write(summaryThread, { mode: "manual", model: "jev/manual", effort: "high", phase: "confirmed", ...state }, previous.revision);
+          const refused = await fetch(`${routerBase(routerPort)}/responses`, {
+            method: "POST", headers: { "Content-Type": "application/json", "x-jev-selection-mode": mode,
+              "x-jev-desktop-recovery": "bridge-active" },
+            body: JSON.stringify({ model: "jev/auto", input: summaryInput, tools: [], tool_choice: "auto",
+              reasoning: { effort: "auto" }, prompt_cache_key: identity, client_metadata: { thread_id: identity } }),
+          });
+          assert.equal(refused.status, 400);
+          assert.equal((await refused.json()).error.code, "invalid_jev_checkpoint_selection");
+        }
       }
       assert.equal(gatewayBodies.length, beforeInvalid, "invalid legacy requests must not reach any upstream");
       const official = await fetch(`${routerBase(routerPort)}/responses`, {
