@@ -9713,6 +9713,42 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
         assert.equal((await refused.json()).error.code, "invalid_jev_selection");
       }
       assert.equal(gatewayBodies.length, 1, "invalid markers must never reach a provider");
+      for (const endpoint of ["responses", "responses/compact"]) {
+        for (const historical of ["jev/auto", "jev/manual"]) {
+          const compactInput = endpoint === "responses" ? [...input, { type: "compaction_trigger" }] : input;
+          const legacy = await fetch(`${routerBase(routerPort)}/${endpoint}`, {
+            method: "POST", headers: { "Content-Type": "application/json",
+              "x-jev-selection-mode": mode, "x-jev-desktop-recovery": "bridge-active",
+              "x-openai-internal-codex-responses-lite": "true" },
+            body: JSON.stringify({ model: historical, stream: false, input: compactInput }),
+          });
+          assert.equal(legacy.status, 200, await legacy.text());
+          assert.equal(gatewayBodies.at(-1).model, mode);
+          assert.ok(!gatewayBodies.at(-1).input.some(item => item.type === "compaction_trigger"));
+          assert.deepEqual(gatewayBodies.at(-1).input[0], input[0]);
+          assert.deepEqual(gatewayBodies.at(-1).input.at(input.length - 1), input.at(-1));
+          assert.equal(gatewayHeaders.at(-1)["x-jev-selection-mode"], undefined);
+          assert.equal(gatewayHeaders.at(-1)["x-jev-desktop-recovery"], undefined);
+        }
+      }
+      const beforeInvalid = gatewayBodies.length;
+      for (const [marker, model, recovery, endpoint, compactInput] of [
+        [mode, "jev/auto", "bridge-active", "responses", input],
+        [mode, "jev/manual", "bridge-active", "responses", [{ type: "compaction_trigger" }, ...input]],
+        [mode, "jev/auto", undefined, "responses/compact", input],
+        [mode, "gpt-6-astra", "bridge-active", "responses/compact", input],
+        ["invalid", "jev/auto", "bridge-active", "responses/compact", input],
+        ["auto, manual", "jev/auto", "bridge-active", "responses/compact", input],
+      ]) {
+        const refused = await fetch(`${routerBase(routerPort)}/${endpoint}`, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-jev-selection-mode": marker,
+            ...(recovery ? { "x-jev-desktop-recovery": recovery } : {}) },
+          body: JSON.stringify({ model, input: compactInput }),
+        });
+        assert.equal(refused.status, 400);
+        assert.equal((await refused.json()).error.code, "invalid_jev_selection");
+      }
+      assert.equal(gatewayBodies.length, beforeInvalid, "invalid legacy requests must not reach any upstream");
       const official = await fetch(`${routerBase(routerPort)}/responses`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: "gpt-6.1-sol", stream: false, input: [] }),

@@ -4186,11 +4186,21 @@ async function handleResponses(request, response, requestUrl) {
     const encoded = await readRequestBody(request, { signal: controller.signal });
     const body = await decodeBody(encoded, request.headers["content-encoding"]);
     let payload = await parseBodyAsync(body);
+    const compactV1 = /\/responses\/compact$/.test(requestUrl.pathname);
+    const compactV2 = Array.isArray(payload.input) && payload.input.at(-1)?.type === "compaction_trigger";
     const jevMode = request.headers["x-jev-selection-mode"];
     if (jevMode !== undefined) {
       // A mode marker is routing data, never authentication. The existing
       // transport check above must pass before this per-request mapping.
-      if (!["auto", "manual"].includes(jevMode) || payload?.model !== "gpt-6.1-sol") {
+      // Native pre-turn compaction retains the previous turn's model. Old
+      // chats recorded virtual Jev aliases before the bridge used a carrier.
+      // Only a bridged compaction may carry that historical alias; the active
+      // provider marker still owns the selected mode, including mode switches.
+      const historicalJevCompaction = (compactV1 || compactV2)
+        && request.headers["x-jev-desktop-recovery"] === "bridge-active"
+        && ["jev/auto", "jev/manual"].includes(payload?.model);
+      if (!["auto", "manual"].includes(jevMode)
+          || (payload?.model !== "gpt-6.1-sol" && !historicalJevCompaction)) {
         writeJson(response, 400, { error: {
           type: "invalid_request_error", code: "invalid_jev_selection",
           message: "Jev selection requires one auto/manual mode and its supported native model.",
@@ -4301,13 +4311,6 @@ async function handleResponses(request, response, requestUrl) {
     });
     diagnostics.contextBytes = grokOauth46IngressContextBytes(payload, route);
     if (route?.slug === "grok-oauth/grok-4.6") diagnostics.requestedServiceTier = payload.service_tier;
-    const compactV1 = /\/responses\/compact$/.test(requestUrl.pathname);
-    // Codex remote compaction V2 uses the ordinary Responses endpoint with a
-    // terminal trigger. Detect the protocol shape before route dispatch so the
-    // native path can also preserve the full tool results being summarized.
-    const compactV2 =
-      Array.isArray(payload.input) &&
-      payload.input.at(-1)?.type === "compaction_trigger";
 
     if (route && (compactV1 || compactV2)) {
       const compaction = await handleRoutedCompaction(

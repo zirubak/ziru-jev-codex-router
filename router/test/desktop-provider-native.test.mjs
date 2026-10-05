@@ -265,3 +265,29 @@ test('bundled native settings accept official Ultra after Jev with unchanged not
     assert.equal(context.calls.length, 1);
   } finally { await connection.close(); }
 });
+
+
+test('legacy alias history uses the previous alias only for compaction after rebind', {
+  skip: !binary || !catalog, timeout: 90000,
+}, async (t) => {
+  const context = await fixture(t);
+  const connection = await connect(context);
+  try {
+    const legacy = await connection.request('thread/start', {
+      model: 'jev/auto', modelProvider: 'legacy-jev', cwd: context.directory,
+      permissions: ':read-only', approvalPolicy: 'never',
+      config: { model_providers: { 'legacy-jev': context.provider } },
+    });
+    await connection.turn(connection.request, { threadId: legacy.thread.id, effort: 'high' });
+    context.calls.length = 0;
+    await connection.bridge.handle('thread/settings/update', {
+      threadId: legacy.thread.id, model: 'jev/auto', effort: 'high',
+    });
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId: legacy.thread.id });
+    assert.ok(context.calls.length > 0);
+    assert.deepEqual(context.calls.map(({ model, mode, compaction }) => ({ model, mode, compaction })), [
+      { model: 'jev/auto', mode: 'auto', compaction: true },
+      { model: 'gpt-6.1-sol', mode: 'auto', compaction: false },
+    ]);
+  } finally { await connection.close(); }
+});
