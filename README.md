@@ -148,9 +148,18 @@ open "$HOME/.codex/codex-router/desktop/Jev Codex.command"
 That path assumes the default state directory. Use the installer-reported path
 if you configured another one. Installation also registers the bridge for
 ordinary app launches and updater relaunches in your GUI session. A changed
-signed app is automatically tested against the native contract. If it fails,
-saved Jev chats remain readable and Jev inference reports a recovery error.
-Official models retain their native provider and defaults.
+signed app is automatically tested against the native contract. A verified
+contract mismatch uses native recovery-only Jev providers: saved Jev chats
+remain readable, but Jev inference is refused. Signature, trust, artifact,
+operational, timeout, or cleanup failures stop the launch. To restore native-only
+launches after a hard stop, remove the GUI override:
+
+```sh
+python3 server/desktop_session.py deactivate "$HOME/.codex/codex-router/desktop/manifest.json"
+```
+
+Use the installer-reported manifest path if you configured another state
+directory. Official models retain their native provider and defaults.
 See [update qualification and recovery](docs/release/native-desktop-bridge.md).
 
 ## Update an existing installation

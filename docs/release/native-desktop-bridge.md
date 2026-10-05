@@ -47,7 +47,12 @@ allowlist. Private receipts are bound to both artifact hashes, the adapter and
 probe source digest, contract version, and Node version. Artifacts are checked
 again after the probe so an update during qualification cannot receive a stale
 success receipt. Failed qualification leaves native operation available with
-recovery-only Jev providers; it does not send Jev inference.
+recovery-only Jev providers only when the trusted app has a verified native
+contract mismatch; it does not send Jev inference. Signature, trust, artifact,
+operational, timeout, and cleanup failures are hard stops and prevent the app
+from launching. To restore native-only launch after a hard stop, deactivate the
+GUI override using the command below, then reopen Codex. Use the installer-
+reported manifest path when the state directory is not the default.
 
 Only the opted-in canonical `CODEX_HOME` and an actual stdio `app-server`
 invocation use the bridge. Other homes and CLI commands keep native I/O.
