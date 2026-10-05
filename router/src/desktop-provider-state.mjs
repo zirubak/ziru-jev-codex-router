@@ -30,8 +30,8 @@ export function validateRouteRecord(record) {
 
 /** Per-thread route metadata only; never stores a prompt, tool result, or key. */
 export class PrivateRouteState {
-  constructor(directory) {
-    mkdirSync(directory, { mode: 0o700, recursive: true });
+  constructor(directory, { create = true } = {}) {
+    if (create) mkdirSync(directory, { mode: 0o700, recursive: true });
     privateFile(lstatSync(directory), true);
     this.directory = directory;
   }
