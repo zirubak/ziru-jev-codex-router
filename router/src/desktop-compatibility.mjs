@@ -12,12 +12,16 @@ export const CONTRACT_VERSION = 1;
 const signingRequirement = 'anchor apple generic and identifier "com.openai.codex" and certificate leaf[subject.OU] = "2DC432GLL2"';
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 
-/** The signed build does not satisfy the adapter contract; native recovery remains safe. */
-export class DesktopContractError extends Error {
-  constructor(message, options) {
-    super(message, options);
-    this.name = 'DesktopContractError';
+export class DesktopContractMismatch extends Error {
+  constructor(message) {
+    super(`Jev Desktop compatibility: ${message}`);
+    this.name = 'DesktopContractMismatch';
+    this.code = 'DESKTOP_INCOMPATIBLE';
   }
+}
+
+function contractMismatch(reason) {
+  return new DesktopContractMismatch(reason);
 }
 
 export function desktopArtifacts(app) {
@@ -55,26 +59,33 @@ async function verifySignature(app) {
 
 function readArchiveEntry(file, entry, offset) {
   if (!Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > 16 * 1024 * 1024
-      || !/^\d+$/.test(entry.offset ?? '')) throw new Error('Unsupported Desktop archive layout');
+      || !/^\d+$/.test(entry.offset ?? '')) throw contractMismatch('Unsupported Desktop archive layout');
   const start = offset + Number(entry.offset);
-  if (!Number.isSafeInteger(start) || start + entry.size > file.length) throw new Error('Incomplete Desktop archive');
+  if (!Number.isSafeInteger(start) || start + entry.size > file.length) throw contractMismatch('Incomplete Desktop archive');
   return file.subarray(start, start + entry.size).toString('utf8');
 }
 
 async function verifyLaunchHook(app) {
   const file = await readFile(desktopArtifacts(app).appAsar);
-  if (file.length < 16) throw new Error('Incomplete Desktop archive');
+  if (file.length < 16) throw contractMismatch('Incomplete Desktop archive');
   const length = file.readUInt32LE(12);
   const offset = 8 + file.readUInt32LE(4);
   if (length > 32 * 1024 * 1024 || offset < 16 + length || offset > file.length) {
-    throw new Error('Unsupported Desktop archive header');
+    throw contractMismatch('Unsupported Desktop archive header');
   }
-  const header = JSON.parse(file.subarray(16, 16 + length));
+  let header;
+  try { header = JSON.parse(file.subarray(16, 16 + length)); }
+  catch (error) {
+    if (error instanceof SyntaxError) throw contractMismatch('Unsupported Desktop archive header');
+    throw error;
+  }
+  if (!header || typeof header !== 'object') throw contractMismatch('Unsupported Desktop archive header');
   const build = header.files?.['.vite']?.files?.build?.files;
-  if (!build || Object.keys(build).length > 10000) throw new Error('Unsupported Desktop startup layout');
+  if (!build || Object.keys(build).length > 10000) throw contractMismatch('Unsupported Desktop startup layout');
   const hook = Object.entries(build).some(([name, entry]) => name.endsWith('.js')
-    && !entry.unpacked && !entry.link && readArchiveEntry(file, entry, offset).includes('CODEX_CLI_PATH'));
-  if (!hook) throw new Error('Desktop no longer exposes the required CLI launch hook');
+    && entry && typeof entry === 'object' && !entry.unpacked && !entry.link
+    && readArchiveEntry(file, entry, offset).includes('CODEX_CLI_PATH'));
+  if (!hook) throw contractMismatch('Desktop no longer exposes the required CLI launch hook');
 }
 
 async function privateDirectory(directory) {
@@ -120,8 +131,12 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
   const fingerprint = dependencies.contractDigest ?? contractDigest;
   const probe = dependencies.probe ?? (async (binary) =>
     (await import('./desktop-contract-probe.mjs')).probeDesktopContract(binary));
-  await sign(app);
   const before = await identity(app);
+  await sign(app);
+  const afterSignature = await identity(app);
+  if (JSON.stringify(before) !== JSON.stringify(afterSignature)) {
+    throw new Error('Desktop changed during signature verification; reopen after the update finishes');
+  }
   const expected = { ...before, contractVersion: CONTRACT_VERSION, contractDigest: await fingerprint() };
   let receiptFile;
   let receipt;
@@ -130,27 +145,26 @@ export async function qualifyDesktop({ app, cacheDirectory }, dependencies = {})
     receiptFile = path.join(cacheDirectory, `${digest(JSON.stringify(expected))}.json`);
     receipt = readReceipt(receiptFile, expected);
   }
-  let failed = false;
-  let failure;
+  let qualificationError;
   if (!receipt) {
     try {
       await hook(app);
       const result = await probe(desktopArtifacts(app).nativeBinary);
-      if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) throw new Error('Native contract returned no version evidence');
+      if (!/^codex-cli \S+$/.test(result?.nativeVersion ?? '')) {
+        throw contractMismatch('Native contract returned no version evidence');
+      }
       receipt = { ...expected, qualified: true, nativeVersion: result.nativeVersion,
         checks: result.checks, checkedAt: new Date().toISOString() };
     } catch (error) {
-      failed = true;
-      failure = error;
+      qualificationError = error;
     }
   }
-  // An updater can replace the bundle while qualification is running, on both
-  // success and failure paths; a change is always a hard stop.
+  // An updater can replace the bundle while qualification is running.
   const after = await identity(app);
   if (JSON.stringify(before) !== JSON.stringify(after) || expected.contractDigest !== await fingerprint()) {
     throw new Error('Desktop or adapter changed during qualification; reopen after the update finishes');
   }
-  if (failed) throw new DesktopContractError(failure?.message ?? String(failure), { cause: failure });
+  if (qualificationError) throw qualificationError;
   if (receiptFile) await writeReceipt(receiptFile, receipt);
   return receipt;
 }

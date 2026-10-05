@@ -3,7 +3,8 @@ import test from 'node:test';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DesktopContractError, desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { DesktopContractMismatch, desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
+import { planQualifiedDesktopLaunch } from '../src/desktop-launch.mjs';
 
 function archive(script = 'process.env.CODEX_CLI_PATH', entryOverrides = {}) {
   const payload = Buffer.from(script);
@@ -68,8 +69,18 @@ test('signed compatible builds qualify without a version allowlist and cache by 
 test('unsigned applications are rejected before probing or creating a receipt cache', async (t) => {
   const { options, dependencies, calls } = await fixture(t);
   dependencies.verifySignature = async () => { calls.push('signature'); throw new Error('Invalid OpenAI signature'); };
-  await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
-    !(error instanceof DesktopContractError) && /Invalid OpenAI signature/.test(error.message));
+  await assert.rejects(qualifyDesktop(options, dependencies), /Invalid OpenAI signature/);
+  assert.deepEqual(calls, ['signature']);
+  await assert.rejects(stat(options.cacheDirectory), { code: 'ENOENT' });
+});
+
+test('an artifact replacement during signature verification is rejected before qualification', async (t) => {
+  const { options, dependencies, files, calls } = await fixture(t);
+  dependencies.verifySignature = async () => {
+    calls.push('signature');
+    await writeFile(files.appAsar, 'replacement after signature check');
+  };
+  await assert.rejects(qualifyDesktop(options, dependencies), /changed during signature verification/);
   assert.deepEqual(calls, ['signature']);
   await assert.rejects(stat(options.cacheDirectory), { code: 'ENOENT' });
 });
@@ -82,16 +93,93 @@ test('failed qualification never publishes a success receipt', async (t) => {
         if (result === 'rejected') throw new Error('Native contract failed');
         return { checks: [] };
       };
-      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
-        error instanceof DesktopContractError && /Native contract/.test(error.message));
+      await assert.rejects(qualifyDesktop(options, dependencies), /Native contract/);
+      assert.deepEqual(await readdir(options.cacheDirectory), []);
+    });
+  }
+});
+
+test('failed qualification remains a hard stop when artifacts or adapter change', async (t) => {
+  for (const failure of ['hook', 'probe', 'missing-version']) {
+    for (const change of ['app', 'native', 'adapter']) {
+      await t.test(`${failure} failure with ${change} change`, async (subtest) => {
+        const { options, dependencies, files } = await fixture(subtest);
+        let codeDigest = 'a'.repeat(64);
+        dependencies.contractDigest = async () => codeDigest;
+        const mutate = async () => {
+          if (change === 'app') await writeFile(files.appAsar, 'changed app artifact');
+          else if (change === 'native') await writeFile(files.nativeBinary, 'changed native artifact');
+          else codeDigest = 'c'.repeat(64);
+        };
+        if (failure === 'hook') {
+          dependencies.verifyLaunchHook = async () => {
+            await mutate();
+            throw new Error('Native launch hook operation failed');
+          };
+        } else {
+          dependencies.probe = async () => {
+            await mutate();
+            if (failure === 'missing-version') return { checks: [] };
+            throw new Error('Native probe operation failed');
+          };
+        }
+        const manifest = {
+          version: 1, app: options.app, nativeBinary: files.nativeBinary,
+          appExecutable: join(options.app, 'Contents/MacOS/ChatGPT'), appAsar: files.appAsar,
+          bridgeBinary: '/router/bin/jev-desktop-codex',
+        };
+        await assert.rejects(planQualifiedDesktopLaunch(manifest, '/private/manifest.json', {},
+          options.cacheDirectory, () => qualifyDesktop(options, dependencies)), /changed during qualification/);
+        assert.deepEqual(await readdir(options.cacheDirectory), []);
+      });
+    }
+  }
+});
+
+test('unchanged incompatible signed builds select native recovery for each contract failure', async (t) => {
+  for (const failure of ['hook', 'probe', 'missing-version']) {
+    await t.test(failure, async (subtest) => {
+      const { options, dependencies, files } = await fixture(subtest);
+      if (failure === 'hook') dependencies.verifyLaunchHook = async () => { throw new DesktopContractMismatch('Unsupported launch hook'); };
+      else dependencies.probe = async () => failure === 'probe'
+        ? Promise.reject(new DesktopContractMismatch('Unsupported native contract'))
+        : { checks: [] };
+      const manifest = {
+        version: 1, app: options.app, nativeBinary: files.nativeBinary,
+        appExecutable: join(options.app, 'Contents/MacOS/ChatGPT'), appAsar: files.appAsar,
+        bridgeBinary: '/router/bin/jev-desktop-codex',
+      };
+      const result = await planQualifiedDesktopLaunch(manifest, '/private/manifest.json', {},
+        options.cacheDirectory, () => qualifyDesktop(options, dependencies));
+      assert.equal(result.plan.mode, 'native');
+      assert.equal(result.compatibilityError.code, 'DESKTOP_INCOMPATIBLE');
+      assert.deepEqual(await readdir(options.cacheDirectory), []);
+    });
+  }
+});
+
+test('operational and cleanup failures propagate without enabling native recovery', async (t) => {
+  for (const stage of ['hook', 'probe']) {
+    await t.test(stage, async (subtest) => {
+      const { options, dependencies, files } = await fixture(subtest);
+      const failure = Object.assign(new Error(`${stage} cleanup failed`), { code: 'EIO' });
+      if (stage === 'hook') dependencies.verifyLaunchHook = async () => { throw failure; };
+      else dependencies.probe = async () => { throw failure; };
+      const manifest = {
+        version: 1, app: options.app, nativeBinary: files.nativeBinary,
+        appExecutable: join(options.app, 'Contents/MacOS/ChatGPT'), appAsar: files.appAsar,
+        bridgeBinary: '/router/bin/jev-desktop-codex',
+      };
+      await assert.rejects(planQualifiedDesktopLaunch(manifest, '/private/manifest.json', {},
+        options.cacheDirectory, () => qualifyDesktop(options, dependencies)), (error) => error === failure);
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
   }
 });
 
 test('artifact or adapter replacement during a probe cannot publish a receipt', async (t) => {
-  for (const change of ['app', 'native', 'adapter']) for (const outcome of ['resolved', 'rejected']) {
-    await t.test(`${change}-${outcome}`, async (subtest) => {
+  for (const change of ['app', 'native', 'adapter']) {
+    await t.test(change, async (subtest) => {
       const { options, dependencies, files } = await fixture(subtest);
       const probe = dependencies.probe;
       let codeDigest = 'a'.repeat(64);
@@ -100,11 +188,9 @@ test('artifact or adapter replacement during a probe cannot publish a receipt', 
         const result = await probe(binary);
         if (change === 'adapter') codeDigest = 'c'.repeat(64);
         else await writeFile(change === 'app' ? files.appAsar : files.nativeBinary, 'replaced during qualification');
-        if (outcome === 'rejected') throw new Error('Native contract failed');
         return result;
       };
-      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
-        !(error instanceof DesktopContractError) && /changed during qualification/.test(error.message));
+      await assert.rejects(qualifyDesktop(options, dependencies), /changed during qualification/);
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
   }
@@ -122,8 +208,7 @@ test('launch hook qualification reads actual ASAR entries and refuses missing or
     await t.test(name, async (subtest) => {
       const { options, dependencies, files, calls } = await fixture(subtest);
       await writeFile(files.appAsar, contents);
-      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
-        error instanceof DesktopContractError && /Desktop/.test(error.message));
+      await assert.rejects(qualifyDesktop(options, dependencies), /Desktop/);
       assert.deepEqual(calls, ['signature']);
       assert.deepEqual(await readdir(options.cacheDirectory), []);
     });
@@ -142,8 +227,7 @@ test('qualification refuses shared or linked cache directories', async (t) => {
         await mkdir(target, { mode: 0o700 });
         await symlink(target, options.cacheDirectory);
       }
-      await assert.rejects(qualifyDesktop(options, dependencies), (error) =>
-        !(error instanceof DesktopContractError) && /private and owner-only/.test(error.message));
+      await assert.rejects(qualifyDesktop(options, dependencies), /private and owner-only/);
       assert.deepEqual(calls, ['signature']);
     });
   }

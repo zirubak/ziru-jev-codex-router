@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
 import { DesktopProviderBridge, JevBridgeError } from '../src/desktop-provider-bridge.mjs';
@@ -72,6 +71,32 @@ test('busy and non-persisted threads are rejected before unsubscribe', async () 
     await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'jev/manual', effort: 'high' }), /idle|persisted/i);
     assert.equal(calls.some((c) => c.method === 'thread/unsubscribe'), false);
   }
+});
+
+test('an unloaded persisted official chat is resumed before switching to Jev', async () => {
+  const { bridge, calls, thread } = fixture();
+  thread.status = { type: 'notLoaded' };
+  const native = bridge.request;
+  bridge.request = (method, params) => {
+    if (method === 'thread/resume') thread.status = { type: 'idle' };
+    return native(method, params);
+  };
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'jev/auto', effort: 'high' });
+  assert.equal(thread.modelProvider, 'jev-router-auto');
+  assert.ok(calls.findIndex((call) => call.method === 'thread/resume')
+    < calls.findIndex((call) => call.method === 'thread/unsubscribe'));
+});
+
+test('a chat that becomes active during resume is refused before unloading', async () => {
+  const { bridge, calls } = fixture();
+  const native = bridge.request;
+  bridge.request = async (method, params) => {
+    const result = await native(method, params);
+    if (method === 'thread/resume') result.thread.status = { type: 'active' };
+    return result;
+  };
+  await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'jev/auto', effort: 'high' }), /idle/i);
+  assert.equal(calls.some((call) => call.method === 'thread/unsubscribe'), false);
 });
 
 test('failed cross-provider resume restores original provider and reports failure', async () => {
@@ -151,11 +176,57 @@ import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DesktopContractMismatch, desktopArtifacts, qualifyDesktop } from '../src/desktop-compatibility.mjs';
 import { connectDesktopBridge } from '../src/desktop-provider-bridge.mjs';
+import { readDesktopManifest } from '../src/desktop-runtime.mjs';
+import { launchDesktop } from '../bin/jev-desktop-codex';
+
+function canonicalDesktopManifest(codexHome, app) {
+  const artifacts = desktopArtifacts(app);
+  return {
+    version: 1, codexHome, nativeBinary: artifacts.nativeBinary,
+    appExecutable: join(app, 'Contents/MacOS/ChatGPT'), appAsar: artifacts.appAsar,
+    bridgeBinary: fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)),
+    routeStateDirectory: join(codexHome, 'private-routes'), provider,
+  };
+}
+
+test('native bridge fixture builder produces and rejects canonical manifests', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-manifest-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const app = join(directory, 'Applications/ChatGPT.app');
+  const manifestPath = join(directory, 'bridge.json');
+  const canonical = canonicalDesktopManifest(directory, app);
+  const save = async (value) => writeFile(manifestPath, JSON.stringify(value), { mode: 0o600 });
+
+  await save(canonical);
+  const loaded = readDesktopManifest(manifestPath, directory);
+  assert.equal(loaded.codexHome, directory);
+  assert.equal(loaded.app, app);
+  assert.equal(loaded.nativeBinary, canonical.nativeBinary);
+  assert.equal(loaded.appAsar, canonical.appAsar);
+  assert.equal(loaded.appExecutable, canonical.appExecutable);
+
+  const unregisteredHome = join(directory, 'unregistered-home');
+  await mkdir(unregisteredHome, { mode: 0o700 });
+  for (const [name, changed, expected] of [
+    ['missing codex home', { codexHome: undefined }, /has not enabled/],
+    ['unregistered codex home', { codexHome: unregisteredHome }, /has not enabled/],
+    ['noncanonical app archive', { appAsar: join(app, 'Contents/Resources/other.asar') }, /one application/],
+    ['noncanonical app executable', { appExecutable: join(app, 'Contents/MacOS/Other') }, /one application/],
+    ['missing bridge binary', { bridgeBinary: undefined }, /manifest paths/],
+    ['missing route state directory', { routeStateDirectory: undefined }, /manifest paths/],
+  ]) {
+    await t.test(name, async () => {
+      await save({ ...canonical, ...changed });
+      assert.throws(() => readDesktopManifest(manifestPath, directory), expected);
+    });
+  }
+});
 
 function rpcClient(input, output) {
   let counter = 0;
@@ -226,13 +297,10 @@ test('native app-server preserves official config and confirms round-trip provid
   const config = `model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = ${JSON.stringify(catalog)}\n`;
   await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   const manifest = join(directory, 'bridge.json');
-  const appAsar = join(directory, 'app.asar');
-  await writeFile(appAsar, 'isolated application fixture');
-  await writeFile(manifest, JSON.stringify({
-    version: 1, nativeBinary: process.env.JEV_DESKTOP_NATIVE_BINARY, provider, appAsar, routeStateDirectory: join(directory, 'private-routes'),
-    expectedAppSha256: createHash('sha256').update(await readFile(appAsar)).digest('hex'),
-    expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
-  }), { mode: 0o600 });
+  const app = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY, '../../../../../../..');
+  assert.equal(desktopArtifacts(app).nativeBinary, process.env.JEV_DESKTOP_NATIVE_BINARY,
+    'JEV_DESKTOP_NATIVE_BINARY must be the executable bundled in Desktop');
+  await writeFile(manifest, JSON.stringify(canonicalDesktopManifest(directory, app)), { mode: 0o600 });
   const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
@@ -341,47 +409,113 @@ test('forking a Jev thread with an official model selects the official provider'
   assert.equal(calls.at(-1).params.modelProvider, 'openai');
 });
 
-test('each native invocation disables Jev for missing or stale application pins', {
-  skip: !process.env.JEV_DESKTOP_NATIVE_BINARY,
-  timeout: 90000,
-}, async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-pins-'));
-  const appAsar = join(directory, 'app.asar');
-  await writeFile(appAsar, 'isolated application fixture');
-  const pins = {
-    appAsar,
-    expectedAppSha256: createHash('sha256').update(await readFile(appAsar)).digest('hex'),
-    expectedNativeSha256: createHash('sha256').update(await readFile(process.env.JEV_DESKTOP_NATIVE_BINARY)).digest('hex'),
-  };
-  const manifest = join(directory, 'bridge.json');
-  const env = { ...process.env, CODEX_HOME: directory, HOME: directory, JEV_DESKTOP_CONFIG: manifest };
-  delete env.OPENAI_API_KEY;
-  delete env.OPENAI_BASE_URL;
-  try {
-    for (const change of [
-      { expectedAppSha256: undefined },
-      { expectedNativeSha256: undefined },
-      { expectedAppSha256: '0'.repeat(64) },
-      { expectedNativeSha256: '0'.repeat(64) },
-      { routeStateDirectory: undefined },
-    ]) {
-      await writeFile(manifest, JSON.stringify({ version: 1, nativeBinary: process.env.JEV_DESKTOP_NATIVE_BINARY, provider, routeStateDirectory: join(directory, 'private-routes'), ...pins, ...change }), { mode: 0o600 });
-      const child = spawn(process.execPath, [fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)), 'app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
-      const client = rpcClient(child.stdin, child.stdout);
-      try {
-        await client.call('initialize', { clientInfo: { name: 'jev_pin_test', version: '1' }, capabilities: { experimentalApi: true } });
-        client.notify('initialized');
-        const models = await client.call('model/list');
-        assert.equal(models.data.some((model) => model.model.startsWith('jev/')), false, `Jev enabled despite pin mismatch: ${Object.keys(change)[0]}`);
-        assert.ok(models.data.length > 0, 'ordinary native model list remains available');
-      } finally {
-        client.close();
-        child.kill('SIGTERM');
-        await new Promise((resolve) => child.once('exit', resolve));
-      }
-    }
-  } finally {
-    await rm(directory, { recursive: true, force: true });
+test('malformed canonical manifests cannot launch or reach native recovery', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-wrapper-manifest-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const app = join(directory, 'Applications/ChatGPT.app');
+  const canonical = canonicalDesktopManifest(directory, app);
+  assert.equal(desktopArtifacts(app).nativeBinary, canonical.nativeBinary);
+  const manifestPath = join(directory, 'bridge.json');
+  const unregisteredHome = join(directory, 'unregistered-home');
+  await mkdir(unregisteredHome, { mode: 0o700 });
+  const environment = { CODEX_HOME: directory, JEV_DESKTOP_CONFIG: manifestPath };
+  const cases = [
+    ['missing codexHome', { codexHome: undefined }],
+    ['unregistered codexHome', { codexHome: unregisteredHome }],
+    ['noncanonical appAsar', { appAsar: join(app, 'Contents/Resources/other.asar') }],
+    ['noncanonical appExecutable', { appExecutable: join(app, 'Contents/MacOS/Other') }],
+    ['missing bridgeBinary', { bridgeBinary: undefined }],
+    ['missing routeStateDirectory', { routeStateDirectory: undefined }],
+  ];
+  for (const [name, changed] of cases) {
+    await t.test(name, async () => {
+      await writeFile(manifestPath, JSON.stringify({ ...canonical, ...changed }), { mode: 0o600 });
+      let launched = false;
+      let qualified = false;
+      await assert.rejects(launchDesktop(['app-server'], {
+        environment, readManifest: readDesktopManifest,
+        qualify: async () => { qualified = true; },
+        spawnProcess: () => { launched = true; throw new Error('malformed manifest reached spawn'); },
+        signalTarget: new EventEmitter(),
+      }));
+      assert.equal(launched, false);
+      assert.equal(qualified, false);
+    });
+  }
+});
+
+test('trusted stable incompatibility reaches the configured native executable without enabling Jev', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-wrapper-recovery-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const app = join(directory, 'Applications/ChatGPT.app');
+  const artifacts = desktopArtifacts(app);
+  await mkdir(dirname(artifacts.nativeBinary), { recursive: true });
+  await writeFile(artifacts.appAsar, 'stable signed application fixture');
+  await writeFile(artifacts.nativeBinary, 'stable native executable fixture');
+  const canonical = canonicalDesktopManifest(directory, app);
+  assert.equal(artifacts.nativeBinary, canonical.nativeBinary);
+  const manifestPath = join(directory, 'bridge.json');
+  await writeFile(manifestPath, JSON.stringify(canonical), { mode: 0o600 });
+  const environment = { CODEX_HOME: directory, JEV_DESKTOP_CONFIG: manifestPath,
+    CODEX_CLI_PATH: '/old/bridge', CODEX_APP_SERVER_USE_LOCAL_DAEMON: '1' };
+  let launched;
+  let bridgeConnected = false;
+  let stateCreated = false;
+  await launchDesktop(['app-server'], {
+    environment,
+    readManifest: readDesktopManifest,
+    qualify: (options) => qualifyDesktop(options, {
+      verifySignature: async () => {},
+      contractDigest: async () => 'a'.repeat(64),
+      verifyLaunchHook: async () => { throw new DesktopContractMismatch('unsupported app contract'); },
+    }),
+    createState: () => { stateCreated = true; return {}; },
+    connectBridge: () => { bridgeConnected = true; },
+    spawnProcess: (...args) => { launched = args; return new EventEmitter(); },
+    signalTarget: new EventEmitter(),
+    writeStderr() {},
+  });
+  assert.equal(launched[0], canonical.nativeBinary);
+  assert.equal(launched[1][0], 'app-server');
+  assert.equal(launched[2].env.CODEX_CLI_PATH, undefined);
+  assert.equal(launched[2].env.CODEX_APP_SERVER_USE_LOCAL_DAEMON, undefined);
+  assert.equal(launched[2].env.JEV_DESKTOP_CONFIG, undefined);
+  assert.equal(stateCreated, false);
+  assert.equal(bridgeConnected, false);
+});
+
+test('qualification operational and cleanup failures cannot reach native recovery', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-wrapper-failure-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const app = join(directory, 'Applications/ChatGPT.app');
+  const artifacts = desktopArtifacts(app);
+  await mkdir(dirname(artifacts.nativeBinary), { recursive: true });
+  await writeFile(artifacts.appAsar, 'stable application fixture');
+  await writeFile(artifacts.nativeBinary, 'stable native executable fixture');
+  const canonical = canonicalDesktopManifest(directory, app);
+  const manifestPath = join(directory, 'bridge.json');
+  await writeFile(manifestPath, JSON.stringify(canonical), { mode: 0o600 });
+  for (const failure of ['signature operation failed', 'probe cleanup failed']) {
+    await t.test(failure, async () => {
+      const environment = { CODEX_HOME: directory, JEV_DESKTOP_CONFIG: manifestPath };
+      let launched = false;
+      const dependencies = failure.startsWith('signature')
+        ? { verifySignature: async () => { throw new Error(failure); } }
+        : {
+          verifySignature: async () => {},
+          contractDigest: async () => 'b'.repeat(64),
+          verifyLaunchHook: async () => {},
+          probe: async () => { throw new Error(failure); },
+        };
+      await assert.rejects(launchDesktop(['app-server'], {
+        environment,
+        readManifest: readDesktopManifest,
+        qualify: (options) => qualifyDesktop(options, dependencies),
+        spawnProcess: () => { launched = true; throw new Error('operational failure reached recovery spawn'); },
+        signalTarget: new EventEmitter(),
+      }), new RegExp(failure));
+      assert.equal(launched, false);
+    });
   }
 });
 
