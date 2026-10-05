@@ -234,13 +234,17 @@ export class DesktopProviderBridge {
 
   async rebind(threadId, model, effort, current) {
     const { thread } = current;
-    if (thread.status?.type !== 'idle' || this.statuses.get(threadId)?.type === 'active') {
+    if (!['idle', 'notLoaded'].includes(thread.status?.type) || this.statuses.get(threadId)?.type === 'active') {
       refuse('wait until this thread is idle before changing providers.');
     }
     if (!thread.path || thread.ephemeral) refuse('a persisted thread with history is required for changing providers.');
     // Read effective settings from the live session before unloading; the stored
     // Thread.modelProvider can describe its original provider after a switch.
     const old = this.remember(await this.request('thread/resume', { threadId }));
+    // Unloaded history is switchable only after the live session confirms idle.
+    if (old.thread?.status?.type !== 'idle' || this.statuses.get(threadId)?.type === 'active') {
+      refuse('wait until this thread is idle before changing providers.');
+    }
     const providerId = providerFor(model, old.modelProvider);
     if (old.modelProvider === providerId) return old;
     if (!old.activePermissionProfile?.id) refuse('permission profile cannot be preserved; select the model in a new chat.');

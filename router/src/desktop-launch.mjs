@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { qualifyDesktop } from './desktop-compatibility.mjs';
+import { DesktopContractMismatch, qualifyDesktop } from './desktop-compatibility.mjs';
 import { readDesktopManifest } from './desktop-runtime.mjs';
 
 /** The contract verdict, rather than a release allowlist, selects the adapter. */
@@ -28,13 +28,27 @@ export function planDesktopLaunch(manifest, manifestPath, environment, observed)
     warning: compatible ? null : 'Desktop compatibility is unverified. Jev chats remain readable; reconnect before sending a Jev request.' };
 }
 
-/** A failed qualification degrades to native recovery; only an unsafe manifest or plan stops. */
+export async function planQualifiedDesktopLaunch(manifest, manifestPath, environment, cacheDirectory, qualify = qualifyDesktop) {
+  planDesktopLaunch(manifest, manifestPath, environment, {});
+  let observed = { contractVerified: false };
+  let compatibilityError = null;
+  try {
+    await qualify({ app: manifest.app, cacheDirectory });
+    observed = { contractVerified: true };
+  } catch (error) {
+    if (!(error instanceof DesktopContractMismatch)) throw error;
+    compatibilityError = error;
+  }
+  return { plan: planDesktopLaunch(manifest, manifestPath, environment, observed), compatibilityError };
+}
+
 export async function observeDesktopCompatibility(manifest, manifestPath, qualify = qualifyDesktop) {
   try {
     await qualify({ app: manifest.app, cacheDirectory: path.join(path.dirname(manifestPath), 'qualifications') });
     return { contractVerified: true };
   } catch (error) {
-    return { contractVerified: false, reason: error?.message ?? String(error) };
+    if (!(error instanceof DesktopContractMismatch)) throw error;
+    return { contractVerified: false, reason: error.message };
   }
 }
 
