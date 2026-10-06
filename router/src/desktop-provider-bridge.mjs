@@ -401,7 +401,16 @@ export class DesktopProviderBridge {
 }
 
 /** Bidirectional JSON-RPC relay with independent IDs for native callbacks. */
-export function connectDesktopBridge({ input, output, child, provider, state }) {
+export function connectDesktopBridge({ input, output, child, provider, state, diagnostics = () => {} }) {
+  let diagnosticFailed = false;
+  const recordDiagnostic = (...args) => {
+    if (diagnosticFailed) return;
+    try { diagnostics(...args); }
+    catch {
+      diagnosticFailed = true;
+      process.stderr.write('Jev Plan diagnostics failed; recording stopped and routing was preserved.\n');
+    }
+  };
   const pending = new Map();
   const callbacks = new Map();
   const serial = new Map();
@@ -410,7 +419,8 @@ export function connectDesktopBridge({ input, output, child, provider, state }) 
   const send = (stream, message) => stream.write(`${JSON.stringify(message)}\n`);
   const request = (method, params) => new Promise((resolve, reject) => {
     const id = `${prefix}-${++counter}`;
-    pending.set(id, { resolve, reject });
+    pending.set(id, { resolve, reject, method, threadId: params?.threadId });
+    recordDiagnostic('native_request', method, params);
     send(child.stdin, { id, method, params });
   });
   const bridge = new DesktopProviderBridge({ request, provider, state });
@@ -426,10 +436,14 @@ export function connectDesktopBridge({ input, output, child, provider, state }) 
     } else if (message.id != null && pending.has(message.id)) {
       const entry = pending.get(message.id);
       pending.delete(message.id);
+      recordDiagnostic(message.error ? 'native_error' : 'native_reply', entry.method,
+        { ...message.result, threadId: entry.threadId ?? message.result?.thread?.id, errorCode: message.error?.code });
       if (message.error) entry.reject(new JevBridgeError(message.error.code, message.error.message, message.error.data));
       else entry.resolve(message.result);
     } else {
+      recordDiagnostic('native_notification', message.method, message.params);
       const forwarded = bridge.notification(message);
+      if (forwarded) recordDiagnostic('public_notification', forwarded.method, forwarded.params);
       if (forwarded) send(output, forwarded);
     }
   });
@@ -443,6 +457,7 @@ export function connectDesktopBridge({ input, output, child, provider, state }) 
       return;
     }
     if (message.id == null) { send(child.stdin, message); return; }
+    recordDiagnostic('client_request', message.method, message.params);
     const run = async () => {
       try { send(output, { id: message.id, result: await bridge.handle(message.method, message.params) }); }
       catch (error) {
