@@ -110,7 +110,7 @@ async function fixture(t, { relay = false } = {}) {
     const compaction = !(body.tools?.length || additionalTools);
     if (req.url.startsWith('/upstream/')) {
       const selection = execFileSync('python3', ['-c',
-        'import json,sys; from selection_policy import resolve_selection; print(json.dumps(resolve_selection(json.load(sys.stdin)).state()))'], {
+        'import json,sys; from selection_policy import resolve_selection; from jev_server import plan_collaboration_mode; p=json.load(sys.stdin); print(json.dumps({**resolve_selection(p).state(), "plan_mode": plan_collaboration_mode(p)}))'], {
         cwd: new URL('../../server/', import.meta.url), input: JSON.stringify(body), encoding: 'utf8',
       });
       upstreamCalls.push({ model: body.model, input: body.input, selection: JSON.parse(selection) });
@@ -118,6 +118,7 @@ async function fixture(t, { relay = false } = {}) {
       return;
     }
     calls.push({ path: req.url, terminalType: body.input?.at(-1)?.type,
+      planMode: body.input?.some(item => item.role === 'developer' && JSON.stringify(item).includes('# Plan Mode (Conversational)')),
       bridge: req.headers['x-jev-desktop-recovery'], model: body.model,
       mode: req.headers['x-jev-selection-mode'], lite: req.headers['x-openai-internal-codex-responses-lite'],
       effort: body.reasoning?.effort, additionalTools, compaction });
@@ -154,12 +155,12 @@ async function fixture(t, { relay = false } = {}) {
   return { directory, calls, upstreamCalls, provider: { name: 'Local fixture', base_url: `http://127.0.0.1:${server.address().port}/v1`, wire_api: 'responses', requires_openai_auth: false } };
 }
 
-async function connect(context) {
+async function connect(context, args = ['app-server']) {
   const env = { ...process.env, HOME: context.directory, CODEX_HOME: context.directory };
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
   delete env.CODEX_APP_SERVER_USE_LOCAL_DAEMON;
-  const child = spawn(binary, ['app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
+  const child = spawn(binary, args, { env, stdio: ['pipe', 'pipe', 'ignore'] });
   const pending = new Map();
   const notices = [];
   const errors = [];
@@ -275,6 +276,92 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
     assert.equal(started.model, 'gpt-6.1-sol');
     assert.equal(started.modelProvider, 'openai');
     assert.equal(started.sandbox.type, 'readOnly');
+  } finally { await connection.close(); }
+});
+
+test('native Plan selection survives settings notification and reaches HTTP for both Jev modes', {
+  skip: !binary || !catalog, timeout: 90000,
+}, async (t) => {
+  const context = await fixture(t, { relay: true });
+  const connection = await connect(context, ['-c', 'features.code_mode_host=true', 'app-server', '--analytics-default-enabled']);
+  try {
+    const modes = await connection.bridge.handle('collaborationMode/list', {});
+    assert.ok(modes.data.some(mode => mode.mode === 'plan'));
+    for (const mode of ['auto', 'manual']) {
+      const model = `jev/${mode}`;
+      const started = await connection.bridge.handle('thread/start', {
+        model, cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
+      });
+      const threadId = started.thread.id;
+      const observed = connection.nextSettings(threadId);
+      await connection.bridge.handle('thread/settings/update', {
+        threadId, collaborationMode: { mode: 'plan', settings: {
+          model, reasoning_effort: 'high', developer_instructions: null,
+        } },
+      });
+      const notice = await observed;
+      assert.equal(notice.public.params.threadSettings.collaborationMode.mode, 'plan');
+      assert.equal(notice.public.params.threadSettings.collaborationMode.settings.model, model);
+      await connection.turn(connection.bridge.handle.bind(connection.bridge), {
+        threadId, collaborationMode: notice.public.params.threadSettings.collaborationMode,
+      });
+      assert.equal(context.calls.at(-1).planMode, true);
+      assert.equal(context.calls.at(-1).mode, mode);
+      assert.equal(context.upstreamCalls.at(-1).selection.plan_mode, true);
+      const effortNotice = connection.nextSettings(threadId);
+      await connection.bridge.handle('thread/settings/update', { threadId, effort: 'xhigh' });
+      const updated = await effortNotice;
+      assert.equal(updated.public.params.threadSettings.collaborationMode.mode, 'plan');
+      assert.equal(updated.public.params.threadSettings.collaborationMode.settings.model, model);
+      const defaultNotice = connection.nextSettings(threadId);
+      await connection.bridge.handle('thread/settings/update', {
+        threadId, collaborationMode: { mode: 'default', settings: {
+          model, reasoning_effort: 'xhigh', developer_instructions: null,
+        } },
+      });
+      const normal = await defaultNotice;
+      assert.equal(normal.public.params.threadSettings.collaborationMode.mode, 'default');
+      await connection.turn(connection.bridge.handle.bind(connection.bridge), {
+        threadId, collaborationMode: normal.public.params.threadSettings.collaborationMode,
+      });
+      assert.equal(context.upstreamCalls.at(-1).selection.plan_mode, false);
+    }
+  } finally { await connection.close(); }
+});
+
+test('resumed official history keeps Plan selected after switching to Jev before a turn', {
+  skip: !binary || !catalog, timeout: 90000,
+}, async (t) => {
+  const context = await fixture(t);
+  let connection = await connect(context);
+  try {
+    const started = await connection.bridge.handle('thread/start', {
+      model: 'gpt-6.1-sol', modelProvider: 'fixture-native', cwd: context.directory,
+      permissions: ':read-only', approvalPolicy: 'never',
+      config: { model_providers: { 'fixture-native': context.provider } },
+    });
+    const threadId = started.thread.id;
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId });
+    await connection.close();
+    connection = await connect(context, ['-c', 'features.code_mode_host=true', 'app-server']);
+    await connection.bridge.handle('thread/resume', {
+      threadId, config: { model_providers: { 'fixture-native': context.provider } },
+    });
+    await connection.bridge.handle('thread/settings/update', { threadId, model: 'jev/auto', effort: 'xhigh' });
+    connection.settings.length = 0;
+    const requestsBeforePlan = context.calls.length;
+    const observed = connection.nextSettings(threadId);
+    await connection.bridge.handle('thread/settings/update', {
+      threadId, collaborationMode: { mode: 'plan', settings: {
+        model: 'jev/auto', reasoning_effort: 'xhigh', developer_instructions: null,
+      } },
+    });
+    const notice = await observed;
+    assert.equal(notice.public.params.threadSettings.collaborationMode.mode, 'plan');
+    assert.equal(notice.public.params.threadSettings.collaborationMode.settings.model, 'jev/auto');
+    await connection.bridge.handle('thread/read', { threadId, includeTurns: false });
+    assert.equal(context.calls.length, requestsBeforePlan, 'Choosing Plan must not send a model request');
+    assert.ok(connection.settings.every(entry => entry.public.params.threadSettings.collaborationMode.mode === 'plan'));
   } finally { await connection.close(); }
 });
 

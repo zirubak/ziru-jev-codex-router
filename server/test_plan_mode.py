@@ -38,6 +38,25 @@ class PlanModeHttp(unittest.TestCase):
     tearDown = fixture.PerCallEndToEnd.tearDown
     call = fixture.PerCallEndToEnd.call
 
+    def test_current_desktop_plan_header_enables_planning_questions(self) -> None:
+        native = message("developer", "<collaboration_mode># Plan Mode (Conversational)\n"
+                         "Present the final plan in a `<proposed_plan>` block.\n</collaboration_mode>")
+        with mock.patch.object(jev, "call_jev_routed", return_value=answer(jev.SOL_61, "high")) as judge:
+            self.call(payload_for([native, message("user", "Plan a bounded change.")]))
+        self.assertTrue(judge.call_args.args[1]["native_plan"])
+        self.assertIn("planning_review", judge.call_args.kwargs["questions"])
+
+    def test_current_desktop_header_preserves_trusted_and_quote_boundaries(self) -> None:
+        body = "<collaboration_mode># Plan Mode (Conversational)\n</collaboration_mode>"
+        for role, text in [("user", body), ("tool", body), ("developer", "```xml\n" + body + "\n```"),
+                           ("developer", "<quoted>" + body + "</quoted>"),
+                           ("developer", body.replace("Conversational", "Unrecognized"))]:
+            with self.subTest(role=role, text=text):
+                self.assertFalse(jev.plan_collaboration_mode({"input": [message(role, text)]}))
+        self.assertFalse(jev.plan_collaboration_mode({"input": [
+            message("developer", body), mode_message("Default"),
+        ]}))
+
     def test_plan_question_budget_keeps_default_questions_unchanged(self) -> None:
         original = copy.deepcopy(QUESTIONS)
         questions = planning_questions()
