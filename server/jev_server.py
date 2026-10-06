@@ -691,7 +691,14 @@ def plan_collaboration_mode(payload: dict) -> bool:
                         r"\s*# Collaboration Mode: (Plan|Default)\b",
                         text[active_start:tag.start()],
                     )
-                    mode = selected.group(1) if selected else None
+                    # Desktop 0.160 uses this exact title instead of the older
+                    # collaboration heading. Keep recognition inside the same
+                    # trusted, top-level envelope rather than matching prose.
+                    desktop_plan = re.match(
+                        r"\s*# Plan Mode \(Conversational\)[ \t]*(?:\r?\n|$)",
+                        text[active_start:tag.start()],
+                    )
+                    mode = selected.group(1) if selected else "Plan" if desktop_plan else None
                     active_start = None
                     stack.pop()
                 continue
