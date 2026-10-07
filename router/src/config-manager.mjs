@@ -2,6 +2,10 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   copyFileSync,
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -1603,8 +1607,25 @@ function atomicWrite(contents) {
   }
 }
 
+function cleanupPreviewSnapshot() {
+  const file = process.argv[3];
+  if (!file || !path.isAbsolute(file)) throw new Error("Cleanup preview requires an absolute snapshot path.");
+  const descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = fstatSync(descriptor);
+    if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o077)) {
+      throw new Error("Cleanup preview requires a private regular snapshot.");
+    }
+    return readFileSync(descriptor, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 if (isolatedCodexConfigured()) {
-  const contents = existsSync(CONFIG_PATH) ? readFileSync(CONFIG_PATH, "utf8") : "";
+  const preview = command === "cleanup-preview";
+  const contents = preview ? cleanupPreviewSnapshot()
+    : existsSync(CONFIG_PATH) ? readFileSync(CONFIG_PATH, "utf8") : "";
   // The existing ownership-aware cleaner preserves foreign tables even when
   // Desktop has moved them inside an old router marker block.
   const legacy = clean(contents);
@@ -1614,6 +1635,10 @@ if (isolatedCodexConfigured()) {
     : contents;
   if (readProviderModeState() || readSignedProviderModeState() || readCodexRouterDefault()) {
     throw new Error("Active legacy provider/default ownership must be restored before isolated install.");
+  }
+  if (preview) {
+    process.stdout.write(`${JSON.stringify({ cleaned })}\n`);
+    process.exit(0);
   }
   process.stdout.write(`${JSON.stringify(manageIsolatedCodex(command, contents, cleaned))}\n`);
   process.exit(0);
