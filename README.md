@@ -443,6 +443,7 @@ Start with `bin/jev-codex-router router doctor` if the model is missing or reque
 | [Contributing](CONTRIBUTING.md) | Tests and contributions |
 | [System/integration/release tests](docs/release/system-integration-release-tests.md) | Stable acceptance cases and evidence requirements |
 | [Release test record](docs/release/release-test-record-template.md) | Reusable candidate, result and request-correlation template |
+| [Review fixes #32–#38](docs/release/review-fixes-32-38-2026-10-06.md) | Request privacy, quota state, Desktop selection and installer regression evidence |
 | [Releases](docs/RELEASING.md) | Release checks; Star History setup deferred until public release |
 
 **Windows is unverified.** The maintainer has not tested Windows installation or end-to-end use. The root installer uses macOS launchd; portable `router/` CI does not establish Windows product support. Windows testers are welcome to try that component in an isolated environment and [share feedback](https://github.com/zirubak/ziru-jev-codex-router/issues). Include OS, Node.js and Codex versions, commit, reproduction steps and sanitized errors. Leave out keys, authentication files, raw conversations and backups.
