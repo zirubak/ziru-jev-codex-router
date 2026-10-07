@@ -708,11 +708,12 @@ function parseBody(buffer) {
       throw new Error("Request JSON must be an object.");
     }
     return value;
-  } catch (error) {
-    const wrapped = new Error(
-      `Invalid JSON request: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    // JSON.parse errors can echo private input. Do not retain their message or
+    // cause: the HTTP logger traverses the full exception chain.
+    const wrapped = new Error("Invalid JSON request: request body must contain a valid JSON object.");
     wrapped.status = 400;
+    wrapped.code = "invalid_request_json";
     throw wrapped;
   }
 }
@@ -6255,7 +6256,9 @@ const server = http.createServer((request, response) => {
           code: transport?.code || error?.code,
           message: transport
             ? `The local router could not complete the request: ${transport.cause}.${transport.hint}`
-            : "The local router could not complete the request.",
+            : error?.code === "invalid_request_json"
+              ? "Request body must contain a valid JSON object."
+              : "The local router could not complete the request.",
         },
       });
     } else {

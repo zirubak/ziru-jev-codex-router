@@ -1,6 +1,7 @@
 """Protect live configuration across the complete multi-stage shell install."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -11,9 +12,11 @@ import tomllib
 from urllib.parse import urlsplit
 
 import desktop_session
+from install_services import all_labels, router_sources, validate_definitions
+import install_config_rollback
 
 
-LABELS = ("io.github.codex-router", "com.thibaultsaintjean.jev-router")
+LABELS = all_labels()
 
 
 def runtime_paths() -> tuple[Path, Path, Path]:
@@ -60,8 +63,42 @@ def protect_tree(root: Path) -> None:
         path.chmod(0o700 if path.is_dir() or owner_execute else 0o600)
 
 
+def disabled_services() -> set[str]:
+    if sys.platform != "darwin":
+        return set()
+    result = subprocess.run(["launchctl", "print-disabled", f"gui/{os.getuid()}"],
+                            capture_output=True, text=True, timeout=15)
+    if result.returncode:
+        raise RuntimeError("cannot snapshot launchd disabled state")
+    return set(re.findall(r'"([^"\n]+)"\s*=>\s*true', result.stdout or ""))
+
+
+def plan_config_cleanup(backup: Path) -> None:
+    """Capture the real read-only cleaner, never arbitrary after-install edits."""
+    snapshot = backup / "config.toml"
+    if not snapshot.exists():
+        snapshot = backup / "config-empty.toml"
+        install_config_rollback.private_write(snapshot, b"")
+    node = shutil.which("node")
+    if node is None:
+        raise ValueError("Node.js is required to plan configuration rollback")
+    manager = Path(__file__).resolve().parents[1] / "router/src/config-manager.mjs"
+    result = subprocess.run([node, str(manager), "cleanup-preview", str(snapshot)],
+                            env={**os.environ, "CODEX_ROUTER_ISOLATED": "1"},
+                            capture_output=True, text=True, timeout=20)
+    try:
+        planned = json.loads(result.stdout).get("cleaned") if result.returncode == 0 else None
+    except (ValueError, TypeError, AttributeError):
+        planned = None
+    if not isinstance(planned, str):
+        raise ValueError("configuration rollback planning failed; no installation changes made")
+    install_config_rollback.private_write(backup / "config-expected.toml", planned.encode())
+
+
 def begin() -> Path:
     home, codex, state = runtime_paths()
+    sources = router_sources(state, Path(__file__).resolve().parents[1] / "router")
+    validate_definitions(home, codex, state, sources)
     session = desktop_session.snapshot(home, state) if (
         sys.platform == "darwin" and os.environ.get("JEV_INSTALL_DESKTOP") == "1") else None
     folder = codex / "jev-install-backups"
@@ -74,7 +111,7 @@ def begin() -> Path:
     manifest = {"version": 1, "codex_home": str(codex), "state": str(state),
                 "config_present": config.exists(), "state_present": state.exists(),
                 "profile_present": (codex / "jev.config.toml").exists(),
-                "services": {}}
+                "services": {}, "router_sources": [str(path) for path in sources]}
     if session is not None:
         manifest["desktop_session"] = session
         if session["service_present"]:
@@ -82,18 +119,23 @@ def begin() -> Path:
                          backup / f"{desktop_session.LABEL}.plist")
     if config.exists():
         private_copy(config, backup / "config.toml")
+    plan_config_cleanup(backup)
     if manifest["profile_present"]:
         private_copy(codex / "jev.config.toml", backup / "jev.config.toml")
     if state.exists():
         shutil.copytree(state, backup / "state", symlinks=True)
         protect_tree(backup / "state")
-    for label in LABELS:
+    disabled = disabled_services()
+    for label in all_labels():
         plist = home / "Library/LaunchAgents" / f"{label}.plist"
         running = False
-        if plist.exists() and sys.platform == "darwin":
+        if sys.platform == "darwin":
             running = subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{label}"],
                                      capture_output=True, timeout=15).returncode == 0
-        manifest["services"][label] = {"present": plist.exists(), "running": running}
+        if running and not plist.exists():
+            raise ValueError(f"loaded service has no recoverable definition: {label}")
+        manifest["services"][label] = {"present": plist.exists(), "running": running,
+                                       "disabled": label in disabled}
         if plist.exists():
             private_copy(plist, backup / f"{label}.plist")
     (backup / "manifest.json").write_text(json.dumps(manifest))
@@ -106,21 +148,18 @@ def restore(backup: Path) -> None:
     manifest = json.loads((backup / "manifest.json").read_text())
     if (manifest["codex_home"], manifest["state"]) != (str(codex), str(state)):
         raise ValueError("backup belongs to different runtime paths")
-    config = codex / "config.toml"
-    if config.exists() and config.is_symlink():
-        raise ValueError("refusing to overwrite a linked configuration")
-    # Restore the direct client path first, before changing the service state.
-    if manifest["config_present"]:
-        fd, name = tempfile.mkstemp(prefix=".jev-config-restore-", dir=codex)
-        os.close(fd)
-        replacement = Path(name)
-        try:
-            private_copy(backup / "config.toml", replacement)
-            replacement.replace(config)
-        finally:
-            replacement.unlink(missing_ok=True)
-    else:
-        config.unlink(missing_ok=True)
+    # Validate every current definition before any rollback service mutation.
+    # Never adopt a new source anchor from the failed install's current state.
+    sources = tuple(Path(value) for value in manifest.get("router_sources", []))
+    validate_definitions(home, codex, state, sources)
+    # Revert only declared installer ownership; keep concurrent user settings.
+    config_error = None
+    try:
+        install_config_rollback.restore(codex / "config.toml", backup, state)
+    except ValueError as error:
+        # A user config conflict does not prevent independent recovery of the
+        # previous runtime and its stopped services. Preserve the partial verdict.
+        config_error = error
     profile = codex / "jev.config.toml"
     if profile.is_symlink():
         raise ValueError("refusing to overwrite a linked profile")
@@ -163,14 +202,29 @@ def restore(backup: Path) -> None:
                 plist.unlink(missing_ok=True)
         for label, previous in manifest["services"].items():
             plist = home / "Library/LaunchAgents" / f"{label}.plist"
+            if previous["present"] or previous["running"] or previous.get("disabled"):
+                # launchd rejects bootstrap while disabled, even when the
+                # snapshot was both loaded and disabled. Reapply it afterward.
+                verb = "disable" if previous.get("disabled") and not previous["running"] else "enable"
+                result = subprocess.run(["launchctl", verb, f"gui/{os.getuid()}/{label}"],
+                                        capture_output=True, timeout=15)
+                if result.returncode:
+                    raise RuntimeError(f"service disabled-state restoration failed for {label}")
             if previous["running"]:
                 started = subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)],
                                          capture_output=True, timeout=15)
                 if started.returncode:
                     raise RuntimeError(f"service restoration failed for {label}")
+                if previous.get("disabled"):
+                    disabled = subprocess.run(["launchctl", "disable", f"gui/{os.getuid()}/{label}"],
+                                              capture_output=True, timeout=15)
+                    if disabled.returncode:
+                        raise RuntimeError(f"service disabled-state restoration failed for {label}")
     if session is not None:
         desktop_session.finish_restore(session, home, session_original)
-    (backup / "result.json").write_text('{"status":"restored"}\n')
+    if config_error is not None:
+        raise config_error
+    install_config_rollback.private_write(backup / "result.json", b'{"status":"restored"}\n')
 
 
 def validate_catalog() -> None:

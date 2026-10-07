@@ -1,78 +1,11 @@
-#!/bin/zsh
-# Install (or re-install) the Jev Router launchd service.
-# Run ONCE by the user, from THEIR Terminal (launchctl is deliberately
-# restricted inside supervised agents).
-#
-#   bash ~/Documents/Github/jev-codex-router/server/install-service.sh
-#
-set -e
-
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON="${JEV_PYTHON:-$(command -v python3)}"
-"$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' || { echo "Python 3.11 or newer is required" >&2; exit 1; }
-LABEL="${JEV_ROUTER_LABEL:-com.thibaultsaintjean.jev-router}"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-LOGDIR="$HOME/Library/Logs"
-CODEX_HOME_VALUE="${CODEX_HOME:-$HOME/.codex}"
-STATE_VALUE="${MODEL_ROUTER_STATE_DIR:-${CODEX_ROUTER_STATE_DIR:-${KIMI_CODEX_STATE_DIR:-$CODEX_HOME_VALUE/codex-router}}}"
-
-xml_escape() {
-  printf '%s' "$1" |
-    sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
-      -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
-}
-
-CODEX_HOME_XML="$(xml_escape "$CODEX_HOME_VALUE")"
-STATE_XML="$(xml_escape "$STATE_VALUE")"
-JEV_ENV_XML=""
-if [ -n "${JEV_ENV_FILE:-}" ]; then
-  JEV_ENV_XML="$(xml_escape "$JEV_ENV_FILE")"
-fi
-
-[ -x "$PYTHON" ] || { echo "python3 not found"; exit 1; }
-mkdir -p "$LOGDIR"
-
-cat > "$PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>$PYTHON</string>
-    <string>$REPO/server/jev_server.py</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>$LOGDIR/jev-router.out.log</string>
-  <key>StandardErrorPath</key><string>$LOGDIR/jev-router.err.log</string>
-  <key>WorkingDirectory</key><string>$REPO</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>CODEX_HOME</key><string>$CODEX_HOME_XML</string>
-    <key>CODEX_ROUTER_STATE_DIR</key><string>$STATE_XML</string>
-$(if [ -n "$JEV_ENV_XML" ]; then
-    printf '    <key>JEV_ENV_FILE</key><string>%s</string>\n' "$JEV_ENV_XML"
-  fi)
-  </dict>
-</dict>
-</plist>
-EOF
-
-# Replace any existing instance (watchdog / former label) with the service.
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-rm -f "$HOME/Library/LaunchAgents/io.0xnatoshi.jev-router.plist"
-launchctl bootout "gui/$(id -u)/io.0xnatoshi.jev-router" 2>/dev/null || true
-pkill -f "jev_server.py" 2>/dev/null || true
-sleep 1
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
-sleep 1.5
-if "$PYTHON" "$REPO/server/healthcheck.py"; then
-  echo ""
-  echo "— Jev Router service OK ($LABEL)"
-else
-  echo "Jev Router health check failed" >&2
+#!/bin/sh
+# Install Jev through the root transaction so failed migrations can be restored.
+set -eu
+REPO="$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)"
+JEV_PYTHON="${JEV_PYTHON:-$(command -v python3)}"
+export JEV_PYTHON
+"$JEV_PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' || {
+  echo "Python 3.11 or newer is required" >&2
   exit 1
-fi
-echo "Uninstall: launchctl bootout gui/\$(id -u)/$LABEL"
+}
+exec "$JEV_PYTHON" "$REPO/server/install_service.py"

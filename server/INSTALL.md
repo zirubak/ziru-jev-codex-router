@@ -116,8 +116,29 @@ Native session sharing remains inside the router.
 Installer and subsequent config repair/refresh commands honor the persistent
 `isolated-codex.json` policy. Global signed/login-free/default-model switches
 are refused. A user-owned `jev.config.toml` is never silently overwritten.
-Install rollback restores both configuration files. Keep old backup files
-untouched; restore individual safe preferences, never the former global route.
+Install rollback reverses verified installer-owned changes in `config.toml`
+while preserving unrelated concurrent edits, and restores the dedicated
+`jev.config.toml` profile. If current configuration overlaps that ownership or
+cannot be safely reconciled, rollback reports a configuration conflict. When
+the current file is safely readable, it is retained privately as
+`config-current.toml` in the transaction backup; otherwise the result records
+that the snapshot is unavailable. Independent profile, state and service
+restoration still proceeds. A conflict never reports successful configuration
+restoration. Inspect the preserved
+current and original files before resolving that conflict. Keep old backup
+files untouched; restore individual safe preferences, never the former global
+route.
+
+The transaction retains the definitions and loaded/disabled state of the current,
+legacy, and explicitly configured Jev services. Service installation validates
+the generated plist before stopping them, refuses an unrelated process on
+port 4319, and waits for the installed launchd PID to own a healthy listener.
+Existing service definitions must match verified runtime and source anchors.
+Foreign definitions and embedded legacy definitions without a verified migration
+contract are preserved and refused before any service is stopped. A previously
+loaded disabled service is enabled for bootstrap before its disabled state is
+restored. Desktop rollback removes the verified runtime leaf and preserves an
+empty env table header when the manifest cannot prove who created that table.
 
 To verify manually, start a fresh normal official-model chat and a separate
 `codex -p jev` session. Confirm the normal configuration has no router URL or

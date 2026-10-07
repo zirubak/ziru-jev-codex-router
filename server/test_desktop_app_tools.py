@@ -77,11 +77,45 @@ class AppToolRuntimeTests(unittest.TestCase):
             wrapper = desktop / "jev-codex"
             wrapper.write_bytes(b'#!/bin/sh\nexec /old/node "$@"\n')
             wrapper.chmod(0o700)
-            with patch.dict(os.environ, {"CODEX_HOME": str(codex), "MODEL_ROUTER_STATE_DIR": str(state)}), \
+            app = root / "ChatGPT.app"
+            node = app / "Contents/Resources/cua_node/bin/node"
+            node.parent.mkdir(parents=True)
+            node.write_text("synthetic signed runtime")
+            node.chmod(0o700)
+            (codex / "jev.config.toml").write_text(
+                '[model_providers.jev-router]\nname="Jev"\n'
+                'base_url="http://127.0.0.1:4202/v1"\nwire_api="responses"\n'
+                'requires_openai_auth=false\n[model_providers.jev-router.auth]\n'
+                'command="/fixture/node"\n'
+                'args=["/fixture/src/caller-key-auth-command.mjs", "/fixture/caller-secret"]\n')
+            register = install_desktop.desktop_provider_registry.install
+
+            def register_after_manifest(config_path: Path, provider: dict) -> None:
+                manifest = json.loads((desktop / "manifest.json").read_text())
+                self.assertEqual(manifest["provider"], provider)
+                self.assertEqual(manifest["appExecutable"], str(app / "Contents/MacOS/ChatGPT"))
+                self.assertEqual(config_path.read_bytes(), original)
+                register(config_path, provider)
+
+            with patch.dict(os.environ, {"HOME": str(root), "CODEX_HOME": str(codex), "MODEL_ROUTER_STATE_DIR": str(state)}), \
                     patch.object(install_transaction.sys, "platform", "linux"):
                 backup = install_transaction.begin()
-                config.write_text(install_desktop.app_tools_config(original.decode(), Path('/signed/node')))
-                wrapper.write_bytes(b'#!/bin/sh\nexec /signed/node "$@"\n')
+                with patch.object(install_desktop, "verify_app", return_value={}), \
+                        patch.object(install_desktop, "trusted_node", return_value=node), \
+                        patch.object(install_desktop.desktop_session, "install") as session_install, \
+                        patch.object(install_desktop.desktop_provider_registry, "install", side_effect=register_after_manifest) as registration:
+                    install_desktop.install(codex, state, app, Path(__file__).resolve().parents[1], node)
+                registration.assert_called_once()
+                session_install.assert_called_once_with(desktop / "manifest.json")
+                self.assertIn(str(node), config.read_text())
+                self.assertIn(str(node), wrapper.read_text())
                 install_transaction.restore(backup)
-            self.assertEqual(config.read_bytes(), original)
+            # The manifest owns the runtime leaf, not creation of an env table.
+            header = b'[plugins."codex-app-tools@openai-bundled".mcp_servers.codex_app.env]\n'
+            self.assertEqual(config.read_bytes(), original + header)
+            restored = tomllib.loads(config.read_text())
+            self.assertEqual(restored["model"], "gpt-6.1-sol")
+            self.assertEqual(restored["plugins"]["codex-app-tools@openai-bundled"]
+                             ["mcp_servers"]["codex_app"]["env"], {})
+            self.assertNotIn("model_providers", restored)
             self.assertEqual(wrapper.read_bytes(), b'#!/bin/sh\nexec /old/node "$@"\n')

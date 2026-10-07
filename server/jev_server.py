@@ -91,6 +91,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -180,6 +181,7 @@ TANDEM_EFFORT = {
 RETRYABLE_TANDEM_STATUS = frozenset({402, 408, 425, 429, 500, 502, 503, 504})
 DRY_MANUAL_PATH = os.path.join(STATE, "jev-router.codex-dry")
 DRY_STATE_PATH = os.path.join(STATE, "jev-router.codex-dry.json")
+_dry_state_lock = threading.Lock()
 DRY_COOLDOWN_S = 30 * 60
 # The edge announces when the exhausted window reopens, so an automatic flip
 # lasts until that instant (plus a small skew, so the re-probe cannot race the
@@ -346,37 +348,67 @@ def native_dry():
     return None
 
 
-def mark_native_dry(reason, resets_at=None):
+def _dry_state_error(operation: str, error: OSError) -> None:
+    """Report persistence failures without exposing state paths or contents."""
+    print(f"[jev-router] quota state {operation} failed: {type(error).__name__}",
+          file=sys.stderr, flush=True)
+
+
+def mark_native_dry(reason: str, resets_at: float | None = None) -> bool:
     """Flip to external fallback, for as long as the exhausted window stays shut.
 
     `resets_at` is the instant the edge said the window reopens. Ending the
     state just after it is what sends the next call back to the native native model ladder
     as soon as the quota returns; without that announcement the flip keeps the
-    bounded cooldown instead.
+    bounded cooldown instead. Writers prepare independent private files; only
+    publishing and clearing are serialized. The last completed mutation wins,
+    so a clear during file preparation precedes that writer's publication.
     """
     now = time.time()
     until = now + DRY_COOLDOWN_S
     if resets_at and resets_at > now:
         until = min(resets_at + DRY_RESET_SKEW_S, now + DRY_MAX_HORIZON_S)
+    tmp: str | None = None
     try:
-        tmp = DRY_STATE_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=os.path.dirname(DRY_STATE_PATH),
+            prefix=os.path.basename(DRY_STATE_PATH) + ".", suffix=".tmp", delete=False,
+        ) as fh:
+            tmp = fh.name
             json.dump({
                 "reason": reason,
                 "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "until": until,
                 "until_iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(until)),
             }, fh)
-        os.replace(tmp, DRY_STATE_PATH)
-    except OSError:
-        pass
+        with _dry_state_lock:
+            os.replace(tmp, DRY_STATE_PATH)
+            tmp = None
+        return True
+    except OSError as error:
+        _dry_state_error("write", error)
+        return False
+    finally:
+        if tmp is not None:
+            try:
+                os.remove(tmp)
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                _dry_state_error("cleanup", error)
 
 
-def clear_native_dry():
-    try:
-        os.remove(DRY_STATE_PATH)
-    except OSError:
-        pass
+def clear_native_dry() -> bool:
+    """Clear the automatic state in publication order, preserving the manual flag."""
+    with _dry_state_lock:
+        try:
+            os.remove(DRY_STATE_PATH)
+        except FileNotFoundError:
+            return True
+        except OSError as error:
+            _dry_state_error("clear", error)
+            return False
+    return True
 
 
 def tandem_effort(effort, native_model=None):

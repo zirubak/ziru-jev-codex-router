@@ -129,11 +129,20 @@ class DesktopInstallationTests(unittest.TestCase):
             self.assertFalse((root / "state").exists())
 
     def test_check_only_verifies_app_without_installing(self) -> None:
-        with patch.object(install_desktop, "verify_app", return_value=QUALIFIED) as verify, \
-                patch.object(install_desktop, "trusted_node", return_value=Path("/signed/node")), \
-                patch.object(install_desktop, "install") as install, \
-                patch("sys.argv", ["install_desktop.py", "--check"]):
-            install_desktop.main()
+        with tempfile.TemporaryDirectory() as name:
+            codex = Path(name)
+            config = codex / "config.toml"
+            original = b'model = "gpt-6.1-sol"\n'
+            config.write_bytes(original)
+            config.chmod(0o600)
+            with patch.dict(os.environ, {"CODEX_HOME": str(codex)}), \
+                    patch.object(install_desktop, "verify_app", return_value=QUALIFIED) as verify, \
+                    patch.object(install_desktop, "trusted_node", return_value=Path("/signed/node")), \
+                    patch.object(install_desktop, "install") as install, \
+                    patch("sys.argv", ["install_desktop.py", "--check"]):
+                install_desktop.main()
+            self.assertEqual(config.read_bytes(), original)
+            self.assertEqual(list(codex.iterdir()), [config])
         verify.assert_called_once_with(Path("/Applications/ChatGPT.app"))
         install.assert_not_called()
 

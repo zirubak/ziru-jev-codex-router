@@ -3,12 +3,14 @@ import json
 import importlib.util
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 import tempfile
 import unittest
 from unittest import mock
 
+from install_services import jev_labels
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("install_transaction", ROOT / "server/install_transaction.py")
@@ -38,6 +40,9 @@ class InstallTransactionTests(unittest.TestCase):
         transaction = ROOT / "server/install_transaction.py"
         if transaction.exists():
             shutil.copy2(transaction, self.repo / "server/install_transaction.py")
+        for helper in ("install_services.py", "install_config_rollback.py"):
+            if (ROOT / "server" / helper).exists():
+                shutil.copy2(ROOT / "server" / helper, self.repo / "server" / helper)
         (self.repo / "server/install_preflight.py").write_text("# Preflight has its own isolated tests.\n")
         (self.repo / "server/desktop_session.py").write_text(
             'LABEL="io.github.jev-desktop-bridge"\n'
@@ -58,10 +63,13 @@ class InstallTransactionTests(unittest.TestCase):
                     "FIXTURE_CALLS": str(self.base / "calls"),
                     "FIXTURE_NODE": shutil.which("node"),
                     "FIXTURE_MANAGER": str(ROOT / "router/src/config-manager.mjs")}
+        self._script(self.commands / "launchctl", "#!/bin/sh\n[ \"$1\" != print ]\n")
         self._script(self.commands / "node", '''#!/usr/bin/env python3
 import json,os,pathlib,sys,subprocess
 state=pathlib.Path(os.environ['CODEX_ROUTER_STATE_DIR'])
 with open(os.environ['FIXTURE_CALLS'],'a') as log:log.write('node '+ ' '.join(sys.argv[1:])+'\\n')
+if 'config-manager.mjs' in sys.argv[1]:
+ os.execv(os.environ['FIXTURE_NODE'],[os.environ['FIXTURE_NODE'],os.environ['FIXTURE_MANAGER'],*sys.argv[2:]])
 if 'configure-model.mjs' in sys.argv[1]:
  os.execv(os.environ['FIXTURE_NODE'],[os.environ['FIXTURE_NODE'],os.environ['FIXTURE_SOURCE']+'/server/configure-model.mjs'])
 if 'configure-auth.mjs' in sys.argv[1]:
@@ -400,12 +408,26 @@ if sys.argv[1:3]==['service','restart']:
         self.assertEqual(manifest["desktop_session"], saved)
 
     def stage_service_backup(self):
-        for label in transaction.LABELS:
+        # The current embedded producer and supported Jev labels are provable;
+        # undocumented legacy embedded definitions must be refused, not stopped.
+        self.service_labels = ("io.github.codex-router", *jev_labels())
+        for label in self.service_labels:
             plist = self.home / "Library/LaunchAgents" / f"{label}.plist"
             plist.parent.mkdir(parents=True, exist_ok=True)
-            plist.write_text("synthetic plist")
+            source = ROOT / "router"
+            script = "/fixture/server/jev_server.py" if label in jev_labels() else str(source / "src/start.mjs")
+            plist.write_bytes(plistlib.dumps({"Label": label, "ProgramArguments": ["/fixture/runtime", script],
+                "WorkingDirectory": str(source), "EnvironmentVariables": {
+                    "CODEX_HOME": str(self.codex_home), **{key: str(self.state) for key in (
+                        "MODEL_ROUTER_STATE_DIR", "CODEX_ROUTER_STATE_DIR", "KIMI_CODEX_STATE_DIR")}}}))
+        real_run = subprocess.run
+        def launchctl(command, **kwargs):
+            if command[0] != "launchctl":
+                return real_run(command, **kwargs)
+            present = command[-1].split("/")[-1] in self.service_labels
+            return subprocess.CompletedProcess(command, 0 if command[1] != "print" or present else 1)
         with mock.patch.dict(os.environ, self.env), mock.patch.object(transaction.sys, "platform", "darwin"), \
-                mock.patch.object(transaction.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)):
+                mock.patch.object(transaction.subprocess, "run", side_effect=launchctl):
             return transaction.begin()
 
     def test_services_are_all_stopped_before_state_restore_or_restart(self):
@@ -418,7 +440,7 @@ if sys.argv[1:3]==['service','restart']:
                 writer_file.write_text("last write by still running service")
                 stopped.append(command[-1].split("/")[-1])
             if command[1] == "bootstrap":
-                self.assertEqual(set(stopped), set(transaction.LABELS))
+                self.assertEqual(set(stopped), set(self.service_labels))
                 self.assertFalse(writer_file.exists())
             return subprocess.CompletedProcess(command, 0)
 
@@ -430,7 +452,7 @@ if sys.argv[1:3]==['service','restart']:
     def test_stop_failure_leaves_state_in_place_and_client_config_restored(self):
         backup = self.stage_service_backup()
         (self.state / "live-marker").write_text("keep until service stops")
-        self.config.write_text("# BEGIN codex-router-managed\n")
+        self.config.write_bytes(self.original)
 
         def launchctl(command, **kwargs):
             return subprocess.CompletedProcess(command, 1 if command[1] == "bootout" else 0)

@@ -33,9 +33,11 @@ class EmbeddedRouterLayout(unittest.TestCase):
         self.assertIn("CODEX_ROUTER_STATE_DIR=$state_dir", installer)
 
         service = (ROOT / "server" / "install-service.sh").read_text()
-        self.assertIn("<key>CODEX_HOME</key>", service)
-        self.assertIn("<key>CODEX_ROUTER_STATE_DIR</key>", service)
-        self.assertIn("<key>JEV_ENV_FILE</key>", service)
+        self.assertIn("install_service.py", service)
+        serializer = (ROOT / "server/install_service.py").read_text()
+        self.assertIn("plistlib.dumps", serializer)
+        for key in ("CODEX_HOME", "CODEX_ROUTER_STATE_DIR", "JEV_ENV_FILE"):
+            self.assertIn(key, serializer)
 
     def test_model_configuration_is_idempotent_and_preserves_other_routes(self):
         with tempfile.TemporaryDirectory() as temp:
