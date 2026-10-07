@@ -1,7 +1,7 @@
 # Trusted Desktop app tool runtime
 
-Status: local checks, integrated review and root installation passed. The
-post-restart fresh-chat gate remains pending.
+Status: complete. Local checks, integrated review, root installation and the
+post-install fresh-chat tool gate passed on 2026-10-06.
 
 ## Candidate and scope
 
@@ -35,11 +35,22 @@ post-restart fresh-chat gate remains pending.
 - Root installation exited successfully; its transaction receipt is committed.
 - Config and both launchers were read back and use the signed bundle runtime.
   Unrelated parsed config matched the pre-install snapshot.
-- Git commit identity and local main ancestry are verified in the delivery
-  response after this record is committed.
-- Fresh-chat tool listing and read operation after the owner reopens Desktop:
-  pending. Isolated compatibility evidence does not satisfy this acceptance gate.
+- Implementation commit: `564665581aa4617790f9587d263cc36f4e358e8c`; local
+  main fast-forward was verified. No remote push was performed.
+- The owner supplied the post-install fresh-chat result. Reading that chat with
+  `codex_app.read_thread` confirmed a completed `codex_app.list_threads` call
+  with `limit=20`, a completed turn and no error.
+- Direct `list_threads` and `read_thread` calls also succeeded in the verification
+  chat. The list contained five pinned chats and twenty recent chats.
+- Only the bounded result is recorded here; private chat contents and the
+  full sidebar inventory are not included.
 
 ## Learning judgment
 
 No durable learning beyond the source, regression tests and installation guide.
+
+## Implementation file identities
+
+- `server/install_desktop.py`: SHA-256 `e3c4aa19e69538fb0182f91c29bed5d5ef5ec6c58a0f1240459992b6a5122ccd`.
+- `server/test_install_desktop.py`: SHA-256 `d4751952e7fa13a19cb92ccb4add5136a4429acf1722f358bd1849d602f1b189`.
+- `server/test_desktop_app_tools.py`: SHA-256 `9594f51a557a4d873cfee3e022706d57a49b4c18da80ca874a0792dd0900a8a5`.
