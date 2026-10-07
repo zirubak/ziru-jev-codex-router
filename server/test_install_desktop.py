@@ -67,6 +67,7 @@ class DesktopInstallationTests(unittest.TestCase):
             state = root / "state"
             state.mkdir(mode=0o700)
             with patch.object(install_desktop, "verify_app", return_value=QUALIFIED), \
+                    patch.object(install_desktop, "trusted_node", return_value=Path("/signed/node"), create=True), \
                     patch.object(install_desktop.desktop_session, "install") as session:
                 for _ in range(2):
                     install_desktop.install(codex, state, root / "ChatGPT.app", Path("/source"), Path("/bin/node"))
@@ -97,8 +98,27 @@ class DesktopInstallationTests(unittest.TestCase):
             wrapper = Path(manifest["bridgeLauncher"])
             self.assertIn('"$@"', wrapper.read_text())
             self.assertIn("JEV_DESKTOP_CONFIG=", wrapper.read_text())
+            self.assertIn("exec /signed/node ", wrapper.read_text())
+            parsed = tomllib.loads(config.read_text())
+            self.assertEqual(parsed["plugins"]["codex-app-tools@openai-bundled"]
+                             ["mcp_servers"]["codex_app"]["env"]["CODEX_MCP_NODE_PATH"], "/signed/node")
             self.assertEqual(wrapper.stat().st_mode & 0o777, 0o700)
             self.assertEqual((state / "desktop/manifest.json").stat().st_mode & 0o777, 0o600)
+
+    def test_runtime_conflict_is_rejected_before_any_install_write(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            config = root / "config.toml"
+            original = ('[plugins."codex-app-tools@openai-bundled".mcp_servers.codex_app.env]\n'
+                        'CODEX_MCP_NODE_PATH="/user/node"\n').encode()
+            config.write_bytes(original)
+            config.chmod(0o600)
+            with patch.object(install_desktop, "verify_app", return_value=QUALIFIED), \
+                    patch.object(install_desktop, "trusted_node", return_value=Path("/signed/node")):
+                with self.assertRaisesRegex(ValueError, "ownership"):
+                    install_desktop.install(root, root / "state", root / "app", root, Path("/bin/node"))
+            self.assertEqual(config.read_bytes(), original)
+            self.assertFalse((root / "state").exists())
 
     def test_unknown_app_is_rejected_before_any_install_write(self) -> None:
         with tempfile.TemporaryDirectory() as name:
@@ -110,6 +130,7 @@ class DesktopInstallationTests(unittest.TestCase):
 
     def test_check_only_verifies_app_without_installing(self) -> None:
         with patch.object(install_desktop, "verify_app", return_value=QUALIFIED) as verify, \
+                patch.object(install_desktop, "trusted_node", return_value=Path("/signed/node")), \
                 patch.object(install_desktop, "install") as install, \
                 patch("sys.argv", ["install_desktop.py", "--check"]):
             install_desktop.main()

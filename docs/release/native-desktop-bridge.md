@@ -40,6 +40,20 @@ supplies its own manifest path and absolute Node executable; shell startup files
 and the signed app bundle remain unchanged. A foreign environment value or
 LaunchAgent is a conflict and is preserved.
 
+Desktop installation requires the OpenAI-signed bundled Node executable at
+`Contents/Resources/cua_node/bin/node`, verifies its signature and execution,
+and uses it for both generated launchers. The bridge exports
+`CODEX_MCP_NODE_PATH`; a managed override under
+`plugins."codex-app-tools@openai-bundled".mcp_servers.codex_app.env` assigns the
+same runtime to app tools. A user-owned runtime override is a conflict even
+when it names the same executable. Unrelated configuration bytes are retained.
+Missing or untrusted runtimes and ownership conflicts fail before installation
+writes. The root installation transaction restores the config and launchers
+when a later installation stage fails. After installation, quit and reopen the
+app yourself and verify app tools in a new chat; an isolated protocol probe
+alone does not prove the fresh-chat acceptance gate.
+See the [runtime verification record](app-tools-runtime-2026-10-06.md).
+
 The adapter qualifies the observed OpenAI-signed app and bundled native engine
 against an isolated protocol and local HTTP test before enabling Jev. A new
 artifact pair triggers qualification automatically, without editing a release

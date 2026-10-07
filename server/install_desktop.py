@@ -15,6 +15,78 @@ import desktop_provider_registry
 import desktop_session
 
 
+APP_TOOLS_HEADER = '[plugins."codex-app-tools@openai-bundled".mcp_servers.codex_app.env]'
+APP_TOOLS_BEGIN = "# BEGIN jev-desktop-app-tools-runtime v1\n"
+APP_TOOLS_END = "# END jev-desktop-app-tools-runtime v1\n"
+
+
+def trusted_node(app: Path) -> Path:
+    """Require the OpenAI-signed bundle runtime rather than a cache or PATH copy."""
+    node = app.absolute() / "Contents/Resources/cua_node/bin/node"
+    if node.is_symlink() or not node.is_file() or not os.access(node, os.X_OK):
+        raise ValueError("Desktop signed Node runtime is missing or not executable")
+    requirement = 'anchor apple generic and identifier "node" and certificate leaf[subject.OU] = "2DC432GLL2"'
+    try:
+        result = subprocess.run(["/usr/bin/codesign", "--verify", "--strict", "-R",
+                                 "=" + requirement, str(node)],
+                                capture_output=True, text=True, timeout=10)
+        if result.returncode:
+            raise ValueError("Desktop Node signature validation failed")
+        result = subprocess.run([str(node), "--version"], capture_output=True, text=True, timeout=10)
+        match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)\s*", result.stdout)
+        if result.returncode or not match or tuple(map(int, match.groups())) < (22, 19, 0):
+            raise ValueError("Desktop signed Node runtime requires Node.js 22.19 or newer")
+    except subprocess.SubprocessError as error:
+        raise ValueError("Desktop signed Node validation did not complete") from error
+    return node
+
+
+def app_tools_env(text: str) -> dict[str, object]:
+    value = tomllib.loads(text)
+    return value.get("plugins", {}).get("codex-app-tools@openai-bundled", {}).get(
+        "mcp_servers", {}).get("codex_app", {}).get("env", {})
+
+
+def app_tools_config(text: str, node: Path) -> str:
+    """Own only the runtime leaf and preserve every unrelated byte."""
+    env = app_tools_env(text)
+    row = "CODEX_MCP_NODE_PATH = " + json.dumps(str(node)) + "\n"
+    block = APP_TOOLS_BEGIN + row + APP_TOOLS_END
+    if APP_TOOLS_BEGIN in text or APP_TOOLS_END in text:
+        if text.count(APP_TOOLS_BEGIN) != 1 or text.count(APP_TOOLS_END) != 1:
+            raise ValueError("ambiguous Desktop app tool runtime ownership")
+        prefix, rest = text.split(APP_TOOLS_BEGIN)
+        owned, suffix = rest.split(APP_TOOLS_END)
+        parsed = tomllib.loads(owned)
+        previous = parsed.get("CODEX_MCP_NODE_PATH")
+        if (set(parsed) != {"CODEX_MCP_NODE_PATH"} or not isinstance(previous, str)
+                or not Path(previous).is_absolute() or env.get("CODEX_MCP_NODE_PATH") != previous
+                or "CODEX_MCP_NODE_PATH" in app_tools_env(prefix + suffix)):
+            raise ValueError("foreign content inside Desktop app tool runtime ownership block")
+        updated = prefix + block + suffix
+    else:
+        if "CODEX_MCP_NODE_PATH" in env:
+            raise ValueError("Desktop app tool runtime ownership conflicts with user configuration")
+        # Only splice into a proven standalone table; dotted or inline ownership
+        # is ambiguous and must be resolved by the owner before any write.
+        headers = list(re.finditer(r"(?m)^" + re.escape(APP_TOOLS_HEADER) + r"[ \t]*(?:#[^\n]*)?\n", text))
+        if headers:
+            if len(headers) != 1:
+                raise ValueError("ambiguous Desktop app tool environment table")
+            start = headers[0].end()
+            following = re.search(r"(?m)^\s*\[", text[start:])
+            end = start + following.start() if following else len(text)
+            prefix, suffix = text[:end], text[end:]
+            updated = prefix + ("\n" if prefix and not prefix.endswith("\n") else "") + block + suffix
+        elif env:
+            raise ValueError("Desktop app tool environment ownership requires a standalone table")
+        else:
+            updated = text + ("\n" if text and not text.endswith("\n") else "") + APP_TOOLS_HEADER + "\n" + block
+    if app_tools_env(updated).get("CODEX_MCP_NODE_PATH") != str(node):
+        raise ValueError("Desktop app tool runtime ownership is not structural")
+    return updated
+
+
 def verify_app(app: Path) -> dict[str, object]:
     """Qualify each signed build against the isolated native bridge contract."""
     node = shutil.which("node")
@@ -65,6 +137,11 @@ def private_write(destination: Path, content: bytes, mode: int) -> None:
 
 def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Path:
     hashes = verify_app(app)
+    node = trusted_node(app)
+    config = codex / "config.toml"
+    original = desktop_provider_registry.private_read(config) if config.exists() else b""
+    app_tools_config(original.decode("utf-8"), node)
+    desktop_provider_registry.split_owned(original.decode("utf-8"))
     codex, state, app, source, node = (path.absolute() for path in (codex, state, app, source, node))
     # Native threads and their route records must advance together. Keep route
     # records outside the install transaction's snapshotted/restored state.
@@ -103,10 +180,16 @@ def install(codex: Path, state: Path, app: Path, source: Path, node: Path) -> Pa
     }
     private_write(manifest_path, (json.dumps(manifest, indent=2) + "\n").encode(), 0o600)
     wrapper = "#!/bin/sh\nJEV_DESKTOP_CONFIG=" + shlex.quote(str(manifest_path))
-    wrapper += "\nexport JEV_DESKTOP_CONFIG\nexec " + " ".join(shlex.quote(str(value)) for value in (
+    wrapper += "\nCODEX_MCP_NODE_PATH=" + shlex.quote(str(node))
+    wrapper += "\nexport JEV_DESKTOP_CONFIG CODEX_MCP_NODE_PATH\nexec " + " ".join(shlex.quote(str(value)) for value in (
         node, source / "router/bin/jev-desktop-codex")) + ' "$@"\n'
     private_write(destination / "jev-codex", wrapper.encode(), 0o700)
-    desktop_provider_registry.install(codex / "config.toml", provider)
+    desktop_provider_registry.install(config, provider)
+    registered = desktop_provider_registry.private_read(config)
+    updated = app_tools_config(registered.decode("utf-8"), node).encode("utf-8")
+    if desktop_provider_registry.private_read(config) != registered:
+        raise ValueError("configuration changed during Desktop app tool registration")
+    private_write(config, updated, 0o600)
     command = "#!/bin/sh\nexec " + " ".join(shlex.quote(str(value)) for value in (
         node, source / "router/src/desktop-launch.mjs", manifest_path)) + "\n"
     launcher = destination / "Jev Codex.command"
@@ -123,6 +206,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.check:
         verify_app(Path("/Applications/ChatGPT.app"))
+        trusted_node(Path("/Applications/ChatGPT.app"))
+        codex = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+        config = codex / "config.toml"
+        original = desktop_provider_registry.private_read(config) if config.exists() else b""
+        app_tools_config(original.decode("utf-8"), Path("/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"))
+        desktop_provider_registry.split_owned(original.decode("utf-8"))
         print("Desktop compatibility verified; no installation state changed.")
         return
     from install_transaction import runtime_paths
