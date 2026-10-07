@@ -219,9 +219,10 @@ export class DesktopProviderBridge {
       const expected = providerFor(record.model, 'openai');
       if (thread.status?.type !== 'notLoaded') {
         const live = await this.request('thread/resume', { threadId });
-        if (live.modelProvider !== expected || live.model !== nativeModel(record.model, expected)) {
+        if (live.modelProvider !== expected || live.model !== nativeModel(record.model, expected)
+            || (record.effort != null && live.reasoningEffort !== record.effort)) {
           this.save(threadId, record.model, record.effort, 'pending', record);
-          refuse('loaded native route changed; saved selection is unconfirmed.');
+          refuse('loaded native model, provider, or effort changed; saved selection is unconfirmed.');
         }
         this.remember(live);
         route = this.routes.get(threadId);

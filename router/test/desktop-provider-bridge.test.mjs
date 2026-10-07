@@ -653,6 +653,51 @@ async function privateFixture(t) {
   return context;
 }
 
+test('cold loaded Manual effort drift blocks dispatch and retains the saved selection', { skip: process.platform === 'win32' }, async (t) => {
+  const { bridge, calls, thread } = await privateFixture(t);
+  await bridge.handle('thread/settings/update', { threadId: 'fixture', effort: 'max' });
+  const saved = bridge.state.read('fixture');
+  thread.reasoningEffort = 'low';
+  const restarted = new DesktopProviderBridge({ request: bridge.request, provider, state: bridge.state });
+  calls.length = 0;
+  await assert.rejects(restarted.handle('turn/start', { threadId: 'fixture', input: [] }), /effort|unconfirmed|changed/);
+  assert.deepEqual(calls.map((call) => call.method), ['thread/read', 'thread/resume']);
+  assert.equal(restarted.routes.has('fixture'), false);
+  assert.deepEqual(bridge.state.read('fixture'), { ...saved, revision: saved.revision + 1, phase: 'pending' });
+  await assert.rejects(restarted.handle('turn/start', { threadId: 'fixture', input: [] }), /unconfirmed/);
+  assert.equal(calls.some((call) => call.method === 'turn/start'), false);
+});
+
+test('cached Manual effort cannot override a separately confirmed private effort', { skip: process.platform === 'win32' }, async (t) => {
+  const { bridge, calls } = await privateFixture(t);
+  const saved = bridge.state.read('fixture');
+  const changed = bridge.state.write('fixture', { mode: 'manual', model: 'jev/manual', effort: 'max', phase: 'confirmed' }, saved.revision);
+  calls.length = 0;
+  await assert.rejects(bridge.handle('turn/start', { threadId: 'fixture', input: [] }), /changed|unconfirmed/);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(bridge.state.read('fixture'), changed);
+});
+
+test('cold confirmed routes preserve implicit effort and allow explicit settings updates', { skip: process.platform === 'win32' }, async (t) => {
+  for (const [model, effort, updated] of [['jev/manual', 'max', 'low'], ['jev/auto', 'high', 'medium'], ['gpt-6.1-sol', 'ultra', 'high']]) {
+    await t.test(model, async (t) => {
+      const { bridge, calls, thread } = await privateFixture(t);
+      await bridge.handle('thread/settings/update', { threadId: 'fixture', model, effort });
+      let restarted = new DesktopProviderBridge({ request: bridge.request, provider, state: bridge.state });
+      calls.length = 0;
+      await restarted.handle('turn/start', { threadId: 'fixture', input: [] });
+      assert.equal(restarted.routes.get('fixture').reasoningEffort, effort);
+      assert.equal(bridge.state.read('fixture').effort, effort);
+      assert.equal(calls.at(-1).params.effort, model.startsWith('jev/') ? effort : undefined);
+      restarted = new DesktopProviderBridge({ request: bridge.request, provider, state: bridge.state });
+      await restarted.handle('thread/settings/update', { threadId: 'fixture', effort: updated });
+      assert.equal(thread.reasoningEffort, updated);
+      assert.equal(bridge.state.read('fixture').effort, updated);
+      assert.equal(bridge.state.read('fixture').phase, 'confirmed');
+    });
+  }
+});
+
 test('official Max to Ultra after Jev persists and forwards native settings unchanged', async (t) => {
   const { bridge, calls, thread } = await privateFixture(t);
   await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'gpt-6.1-sol', effort: 'max' });
