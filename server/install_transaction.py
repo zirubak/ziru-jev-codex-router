@@ -12,7 +12,7 @@ import tomllib
 from urllib.parse import urlsplit
 
 import desktop_session
-from install_services import all_labels, router_sources, validate_definitions
+from install_services import all_labels, router_sources, validate_definitions, wait_stopped
 import install_config_rollback
 
 
@@ -186,6 +186,7 @@ def restore(backup: Path) -> None:
                                          capture_output=True, timeout=15)
                 if stopped.returncode:
                     raise RuntimeError(f"service stop failed for {label}")
+                wait_stopped(label)
     if state.exists():
         # Retain failed state privately for diagnosis rather than deleting it.
         shutil.move(str(state), str(backup / "failed-state"))

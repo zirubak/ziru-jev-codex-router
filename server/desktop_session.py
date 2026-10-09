@@ -8,6 +8,7 @@ import stat
 import subprocess
 import tempfile
 
+from install_services import wait_stopped
 
 LABEL = "io.github.jev-desktop-bridge"
 ENVIRONMENT = "CODEX_CLI_PATH"
@@ -156,8 +157,10 @@ def install(manifest: Path, home: Path | None = None) -> None:
         "ProgramArguments": [settings["python"], settings["script"], "activate", str(manifest)],
         "RunAtLoad": True, "ProcessType": "Background"})
     if previous != content:
-        if loaded and run(["bootout", f"{domain}/{LABEL}"]).returncode:
-            raise RuntimeError("cannot stop previous Desktop session registration")
+        if loaded:
+            if run(["bootout", f"{domain}/{LABEL}"]).returncode:
+                raise RuntimeError("cannot stop previous Desktop session registration")
+            wait_stopped(LABEL, executable="/bin/launchctl")
         loaded = False
         private_write(plist, content)
     if not loaded and run(["bootstrap", domain, str(plist)]).returncode:
@@ -205,8 +208,10 @@ def prepare_restore(previous: dict[str, object], home: Path, original: bytes | N
     """Quiesce registration before the transaction replaces its referenced state."""
     validate_restore(previous, home, original)
     service = f"gui/{os.getuid()}/{LABEL}"
-    if run(["print", service]).returncode == 0 and run(["bootout", service]).returncode:
-        raise RuntimeError("cannot stop Desktop session registration for rollback")
+    if run(["print", service]).returncode == 0:
+        if run(["bootout", service]).returncode:
+            raise RuntimeError("cannot stop Desktop session registration for rollback")
+        wait_stopped(LABEL, executable="/bin/launchctl")
     current = environment()
     if current != previous["environment"]:
         if current != previous["wrapper"]:

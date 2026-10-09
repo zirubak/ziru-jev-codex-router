@@ -436,6 +436,8 @@ if sys.argv[1:3]==['service','restart']:
         writer_file = self.state / "post-snapshot-service-write"
 
         def launchctl(command, **kwargs):
+            if command[1] == "print" and command[-1].split("/")[-1] in stopped:
+                return subprocess.CompletedProcess(command, 113)
             if command[1] == "bootout":
                 writer_file.write_text("last write by still running service")
                 stopped.append(command[-1].split("/")[-1])

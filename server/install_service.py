@@ -9,7 +9,7 @@ import tempfile
 import time
 from threading import Event
 
-from install_services import jev_label, jev_labels, owned
+from install_services import jev_label, jev_labels, owned, wait_stopped
 
 
 def document(source: Path, python: str) -> dict[str, object]:
@@ -101,8 +101,10 @@ def install(source: Path, python: str) -> None:
             os.fchmod(output.fileno(), 0o600)
             output.write(encoded)
         for label, _, loaded in previous:
-            if loaded and launchctl("bootout", f"{domain}/{label}").returncode:
-                raise RuntimeError(f"Jev service stop failed: {label}")
+            if loaded:
+                if launchctl("bootout", f"{domain}/{label}").returncode:
+                    raise RuntimeError(f"Jev service stop failed: {label}")
+                wait_stopped(label)
         destination = directory / f"{jev_label()}.plist"
         temporary.replace(destination)
         for label, path, _ in previous:
