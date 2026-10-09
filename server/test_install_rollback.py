@@ -160,7 +160,7 @@ data=json.loads(file.read_text())
 verb=sys.argv[1]
 label=sys.argv[-1].split("/")[-1]
 if verb=="print":
- if label not in data: sys.exit(1)
+ if label not in data: sys.exit(113)
  print("pid =",data[label])
 elif verb=="bootout": data.pop(label,None)
 elif verb=="bootstrap":
@@ -210,7 +210,7 @@ data=json.loads(file.read_text())
 verb=sys.argv[1]
 label=sys.argv[-1].split("/")[-1]
 if verb=="print":
- if label not in data["loaded"]: sys.exit(1)
+ if label not in data["loaded"]: sys.exit(113)
  print("pid =",data["loaded"][label])
 elif verb=="print-disabled":
  for item in data["disabled"]: print('"'+item+'" => true')
@@ -377,12 +377,16 @@ for label,pid in json.loads(pathlib.Path(os.environ["SERVICE_REGISTRY"]).read_te
             with self.subTest(running=running):
                 plist.write_bytes(original)
                 commands = []
+                loaded = running
                 real_run = subprocess.run
                 def launchctl(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+                    nonlocal loaded
                     if command[0] != "launchctl":
                         return real_run(command, **kwargs)
                     commands.append(command)
-                    code = 0 if running and command[-1].endswith(legacy) else 1
+                    if command[1] == "bootout":
+                        loaded = False
+                    code = 0 if loaded and command[-1].endswith(legacy) else 113
                     return subprocess.CompletedProcess(command, code if command[1] == "print" else 0)
                 with mock.patch.dict(os.environ, self.fixture.env), mock.patch.object(transaction.sys, "platform", "darwin"), mock.patch.object(transaction.subprocess, "run", side_effect=launchctl):
                     backup = transaction.begin()
@@ -416,7 +420,7 @@ class ServiceSerializationTests(unittest.TestCase):
         self.fixture._script(self.fixture.commands / "launchctl", '''#!/bin/sh
 printf "%s\\n" "launchctl $*" >> "$SERVICE_CALLS"
 case "$1" in
-  print) [ -f "$SERVICE_CALLS.loaded" ] && printf 'pid = 424242\\n' ;;
+  print) [ -f "$SERVICE_CALLS.loaded" ] || exit 113; printf 'pid = 424242\\n' ;;
   bootstrap) touch "$SERVICE_CALLS.loaded" ;;
   bootout) rm -f "$SERVICE_CALLS.loaded" ;;
 esac

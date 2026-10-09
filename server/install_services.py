@@ -5,11 +5,29 @@ from pathlib import Path
 import plistlib
 import re
 import stat
+import subprocess
+from threading import Event
+import time
 
 JEV_LABEL = "com.thibaultsaintjean.jev-router"
 LEGACY_JEV_LABEL = "io.0xnatoshi.jev-router"
 ROUTER_LABELS = ("io.github.codex-router", "io.github.kimi-codex-router",
                  "com.ziwenxu.kimi-codex-proxy")
+
+
+def wait_stopped(label: str, timeout: float = 15, executable: str = "launchctl") -> None:
+    """bootout acknowledges termination before launchd removes the service."""
+    deadline = time.monotonic() + timeout
+    service = f"gui/{os.getuid()}/{label}"
+    while (remaining := deadline - time.monotonic()) > 0:
+        result = subprocess.run([executable, "print", service], capture_output=True,
+                                timeout=min(5, remaining))
+        if result.returncode == 113:  # launchd's absent-service status on macOS.
+            return
+        if result.returncode != 0:
+            raise RuntimeError(f"cannot verify service removal: {label}")
+        Event().wait(min(0.1, max(0, deadline - time.monotonic())))
+    raise RuntimeError(f"service shutdown deadline expired: {label}")
 
 
 def jev_label() -> str:
