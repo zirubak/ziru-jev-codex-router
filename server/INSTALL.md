@@ -70,6 +70,15 @@ the source tree, so updates should not touch them. Verify anyway:
 
 ## Troubleshooting
 
+- **Responses-lite quota error after an account usage reset**: current versions
+  send each lite request to the selected native model once, even if an automatic
+  quota state has a future deadline. A successful native response clears that
+  state; a fresh quota refusal remains an explicit 503 because external adapters
+  cannot preserve the lite replay contract. The manual `jev-router.codex-dry`
+  marker still blocks native execution. Restarting an older service alone does
+  not invalidate its persisted automatic state. See the
+  [quota boundary](../docs/release/native-desktop-bridge.md#responses-lite-quota-boundary-2026-10-02).
+
 - **Desktop compatibility or recovery error**: `--desktop` tests the signed app
   and real bundled engine before installation side effects. Changed app artifacts
   are automatically requalified at bridge startup; no manual hash allowlist is

@@ -192,7 +192,7 @@ class SelectionModeHttp(unittest.TestCase):
         error.exception.close()
         self.assertEqual(Edge.payloads, [])
 
-    def test_lite_known_quota_rejects_external_execution(self) -> None:
+    def test_lite_cached_quota_rechecks_native_before_external_execution(self) -> None:
         for mode in ("auto", "manual"):
             for header_only in (False, True):
                 with self.subTest(mode=mode, header_only=header_only):
@@ -203,13 +203,14 @@ class SelectionModeHttp(unittest.TestCase):
                     headers = {"x-openai-internal-codex-responses-lite": "true"} if header_only else {}
                     with mock.patch.object(jev, "native_dry", return_value="quota"), mock.patch.object(
                         jev, "fallback_candidates", return_value=["fixture/fallback"],
-                    ) as candidates, self.assertRaises(urllib.error.HTTPError) as error:
-                        self.call(payload_for(history, model=mode, reasoning={"effort": "medium"}), headers)
-                    self.assertEqual(error.exception.code, 503)
-                    self.assertIn("Responses-lite", error.exception.read().decode())
-                    error.exception.close()
+                    ) as candidates:
+                        status, _ = self.call(
+                            payload_for(history, model=mode, reasoning={"effort": "medium"}), headers,
+                        )
+                    self.assertEqual(status, 200)
                     candidates.assert_not_called()
-                    self.assertEqual(Edge.payloads, [])
+                    self.assertEqual(Edge.payloads[-1]["input"], history)
+        self.assertEqual(len(Edge.payloads), 4)
 
     def test_lite_observed_quota_rejects_external_retry(self) -> None:
         def limited(edge: Edge) -> None:
