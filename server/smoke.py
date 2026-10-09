@@ -8,7 +8,7 @@ from local_runtime import STATE
 from routing_policy import POLICY_VERSION
 
 
-def main():
+def main() -> None:
     if not healthy():
         raise RuntimeError("local health check failed")
     health = http.client.HTTPConnection("127.0.0.1", 4319, timeout=5)
@@ -22,11 +22,15 @@ def main():
     connection = http.client.HTTPConnection("127.0.0.1", 4202, timeout=120)
     result = {"policy": POLICY_VERSION, "model": None, "status": None}
     try:
+        # Exercise Desktop's native replay path so a stale automatic quota
+        # deadline cannot divert installation verification to external fallback.
         body = {"model": "jev/auto", "input": [
             {"role": "user", "content": [{"type": "input_text", "text": "Reply only OK."}]}
-        ], "stream": True}
+        ], "stream": True, "reasoning": {"context": "all_turns"},
+            "parallel_tool_calls": False}
         connection.request("POST", f"/_codex-router/{secret}/v1/responses",
-                           json.dumps(body), {"Content-Type": "application/json"})
+                           json.dumps(body), {"Content-Type": "application/json",
+                                              "x-openai-internal-codex-responses-lite": "true"})
         response = connection.getresponse()
         result["http"] = response.status
         if response.status != 200:
