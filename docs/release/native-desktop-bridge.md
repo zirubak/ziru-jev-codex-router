@@ -164,11 +164,14 @@ idempotence. They do not replace signed-in native UI/inference/compaction checks
 
 The native Desktop wire contract carries tools in `input[].additional_tools`.
 Configured external fallback adapters have no qualified Responses-lite
-transport. On known or newly observed native quota exhaustion, these calls
-return HTTP 503 with an explicit contract error before external execution.
-Healthy native calls preserve their complete replay. Standard Responses
-profile calls retain the existing compatible quota fallback. No native tools
-are silently dropped or translated into an unverified external schema.
+transport. These calls make one native attempt even while an automatic quota
+state is unexpired, so an early account reset can recover without waiting for
+the cached deadline. Native success clears the automatic state; a fresh quota
+refusal records the new reset and returns HTTP 503 before external execution.
+The explicit manual dry marker still blocks the attempt. Healthy native calls
+preserve their complete replay. Standard Responses profile calls retain the
+existing compatible quota fallback. No native tools are silently dropped or
+translated into an unverified external schema.
 
 ## Compatibility and app updates
 

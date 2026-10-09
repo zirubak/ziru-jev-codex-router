@@ -2118,6 +2118,11 @@ class Handler(BaseHTTPRequestHandler):
         # failure), replace the OpenAI ladder with locally discovered configured
         # routes. Healthy native turns never enumerate providers.
         dry_reason = native_dry()
+        if lite_replay and dry_reason == "quota":
+            # Lite has no compatible external route. A cached reset deadline
+            # cannot prove this native turn is still unavailable after an early
+            # quota reset; let its single authoritative attempt decide instead.
+            dry_reason = None
         native_model = model
         fallback_plan = []
         no_fallback = False
