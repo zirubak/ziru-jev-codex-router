@@ -620,7 +620,8 @@ function isSubagentSpawnCall(item) {
 // Inject the session model into local create_thread calls that omitted it, and
 // into spawn_agent calls that carry no model of their own.
 //
-// An explicit subagent model wins. Codex ships the override as a plain string
+// Outside fixed Jev routes, an explicit subagent model wins. Codex ships the
+// override as a plain string
 // on the tool schema rather than a schema enum, and validates the value against
 // its own advertised list, so anything that reaches here is the operator's own
 // delegation choice and not a value the parent model invented. Rewriting it
@@ -643,8 +644,7 @@ function isSubagentSpawnCall(item) {
 // untouched.
 //
 // `model` is the routed session's model (route.slug). Returns a rewritten item
-// only when the call carries no model of its own; otherwise returns the item
-// untouched.
+// when the call needs inheritance or a fixed Jev override must be removed.
 export function injectSessionModelForSpawnCalls(item, model, effortForModel) {
   if (!isSpawnModelCall(item)) return item;
   if (typeof model !== "string" || !model) return item;
@@ -657,9 +657,16 @@ export function injectSessionModelForSpawnCalls(item, model, effortForModel) {
     return item;
   }
   if (typeof args !== "object" || args === null || Array.isArray(args)) return item;
+  // Fixed Jev children inherit the parent's carrier and scoped provider. Jev
+  // owns effort selection; native full forks reject either explicit override.
+  if (isSubagentSpawnCall(item) && ["jev/sol", "jev/astra"].includes(model)) {
+    if (!Object.hasOwn(args, "model") && !Object.hasOwn(args, "reasoning_effort")) return item;
+    const { model: _model, reasoning_effort: _effort, ...inherited } = args;
+    return { ...item, arguments: JSON.stringify(inherited) };
+  }
   // Jev's public alias is not a native collaboration model. The child must
   // inherit the parent's carrier and scoped provider, including on full forks.
-  if (isSubagentSpawnCall(item) && ["jev/auto", "jev/manual", "jev/sol", "jev/astra"].includes(model)) {
+  if (isSubagentSpawnCall(item) && ["jev/auto", "jev/manual"].includes(model)) {
     if (args.model === undefined || args.model === null || args.model === "") return item;
     if (args.model === model) {
       const { model: _alias, ...inherited } = args;

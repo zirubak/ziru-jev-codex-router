@@ -2982,7 +2982,8 @@ async function summarize(request, payload, route, signal, { allowFailover = true
   // The summarizer may select source IDs, but only this deterministic pass can
   // decide which source types and machine outcomes enter a kcr2 checkpoint.
   const prepared = prepareCompaction(normalized);
-  const canonicalReplay = canonicalReplayRequested(request.headers);
+  const canonicalReplay = canonicalReplayRequested(request.headers)
+    || ["jev/sol", "jev/astra"].includes(route.slug);
   const agingEnabled = toolResultAgingEnabled() && !canonicalReplay;
   const aged = ageToolResults(normalized, {
     enabled: agingEnabled,

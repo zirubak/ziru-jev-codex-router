@@ -218,6 +218,8 @@ _cache_affinity_lock = threading.Lock()
 _cache_affinity = {}
 _route_lease_lock = threading.Lock()
 _route_leases = {}
+ROUTE_REQUEST_LIMIT = 4096
+_route_requests: dict[str, tuple[str, object]] = {}
 
 # Codex wraps every turn in machine-generated blocks (goal context, plugin
 # catalog, environment, skills, mode notices). They are the longest part of a
@@ -1213,12 +1215,37 @@ def _latest_tool_batch_names(payload):
     return tuple(calls.get(item.get("call_id"), "") for item in reversed(results))
 
 
-def route_lease(scope, payload, step, now=None):
+def begin_route_request(scope: str, payload: dict) -> tuple[str, object] | None:
+    """Invalidate switched selections and fence late decisions for one session."""
+    raw_key = payload.get("prompt_cache_key")
+    if not isinstance(raw_key, str) or not raw_key.strip():
+        return None
+    session = hashlib.sha256(raw_key.strip().encode("utf-8")).hexdigest()
+    token = object()
+    with _route_lease_lock:
+        previous = _route_requests.pop(session, None)
+        if previous and previous[0] != scope:
+            _route_leases.pop(previous[0], None)
+        _route_requests[session] = (scope, token)
+        while len(_route_requests) > ROUTE_REQUEST_LIMIT:
+            oldest = next(iter(_route_requests))
+            old_scope, _ = _route_requests.pop(oldest)
+            _route_leases.pop(old_scope, None)
+    return session, token
+
+
+def route_lease(
+    scope: str, payload: dict, step: dict, now: float | None = None,
+    request_token: tuple[str, object] | None = None,
+) -> dict | None:
     """Reuse a prior semantic route only for an unchanged, clean continuation."""
     now = time.time() if now is None else now
     fingerprint = _turn_fingerprint(payload)
     contract = _lease_contract_fingerprint(payload)
     with _route_lease_lock:
+        if (request_token is None
+                or _route_requests.get(request_token[0]) != (scope, request_token[1])):
+            return None
         entry = _route_leases.get(scope)
         if not isinstance(entry, dict):
             return None
@@ -1254,24 +1281,36 @@ def route_lease(scope, payload, step, now=None):
         return dict(entry["decision"])
 
 
-def remember_route_lease(scope, payload, step, decision, status, now=None):
+def remember_route_lease(
+    scope: str, payload: dict, step: dict, decision: dict | None, status: int,
+    now: float | None = None, request_token: tuple[str, object] | None = None,
+) -> None:
     """Persist only successful, explicitly scoped Jev decisions in memory."""
     raw_key = payload.get("prompt_cache_key")
-    if (
+    eligible = not (
         status != 200
         or not isinstance(raw_key, str)
         or not raw_key.strip()
         or not isinstance(decision, dict)
         or decision.get("lease") == "one_call"
-    ):
-        with _route_lease_lock:
-            _route_leases.pop(scope, None)
-        return
+    )
     fingerprint = _turn_fingerprint(payload)
     contract = _lease_contract_fingerprint(payload)
-    if not fingerprint or not contract:
-        return
     now = time.time() if now is None else now
+    with _route_lease_lock:
+        if (request_token is None
+                or _route_requests.get(request_token[0]) != (scope, request_token[1])):
+            return
+        if not eligible or not fingerprint or not contract:
+            _route_leases.pop(scope, None)
+            return
+        _store_route_lease(scope, step, decision, fingerprint, contract, now)
+
+
+def _store_route_lease(
+    scope: str, step: dict, decision: dict, fingerprint: str, contract: str, now: float,
+) -> None:
+    """Store under the caller's lease lock after checking its request token."""
     preserved = {
         key: decision.get(key)
         for key in (
@@ -1280,19 +1319,18 @@ def remember_route_lease(scope, payload, step, decision, status, now=None):
             "policy_version", "reference_version", "reference_sha256",
         )
     }
-    with _route_lease_lock:
-        _route_leases[scope] = {
-            "turn": fingerprint,
-            "contract": contract,
-            "lease": decision["lease"],
-            "tool": (
-                step.get("tool_call", {}).get("name")
-                if step.get("step_type") == "tool_step"
-                else None
-            ),
-            "seen_at": now,
-            "decision": preserved,
-        }
+    _route_leases[scope] = {
+        "turn": fingerprint,
+        "contract": contract,
+        "lease": decision["lease"],
+        "tool": (
+            step.get("tool_call", {}).get("name")
+            if step.get("step_type") == "tool_step"
+            else None
+        ),
+        "seen_at": now,
+        "decision": preserved,
+    }
 
 
 def route_label(model):
@@ -2026,9 +2064,9 @@ class Handler(BaseHTTPRequestHandler):
         jev_usage = None
         decision_source = None
         scope = cache_scope(payload, task)
+        request_token = begin_route_request(scope, payload)
         affinity = cache_affinity(scope, payload)
         plan_mode = plan_collaboration_mode(payload)
-        leased = None if plan_mode else route_lease(scope, payload, step)
         if os.path.exists(OFF_PATH):
             model, effort, speed, gate = (
                 selection.fixed_model or ASTRA,
@@ -2036,6 +2074,12 @@ class Handler(BaseHTTPRequestHandler):
             )
         else:
             key = load_key()
+            if selection.fixed_model and not key:
+                remember_route_lease(scope, payload, step, None, 503, request_token=request_token)
+                leased = None
+            else:
+                leased = None if plan_mode else route_lease(
+                    scope, payload, step, request_token=request_token)
             if leased is not None:
                 decision = leased
                 tier, depth, conf = (
@@ -2288,10 +2332,6 @@ class Handler(BaseHTTPRequestHandler):
                         if selection.fixed_model else lite_quota_error if lite_replay else
                         f"no configured fallback can honor manual effort {selection.user_effort}"
                     }}).encode("utf-8")
-        elif status == 200 and not dry_reason and model in TIERS and os.path.exists(DRY_STATE_PATH):
-            # Native answered again: drop the stale auto state (never the flag).
-            clear_native_dry()
-            dry_reason = "cleared"
         if (model not in TIERS and status in RETRYABLE_TANDEM_STATUS
                 and unwritten is not None and fallback_plan):
             # One bounded sibling attempt. The candidate resolver already
@@ -2333,12 +2373,18 @@ class Handler(BaseHTTPRequestHandler):
             and final_attempt.get("terminal_type") == "response.completed"
             else status if status != 200 else 502
         )
+        if (completed_status == 200 and not dry_reason and model in TIERS
+                and os.path.exists(DRY_STATE_PATH)):
+            # A failed terminal inside HTTP 200 is not evidence of quota recovery.
+            clear_native_dry()
+            dry_reason = "cleared"
         remember_cache_model(
             scope, payload, model, completed_status,
             usage=final_attempt.get("usage") if final_attempt else None,
             effort=effort,
         )
-        remember_route_lease(scope, payload, step, decision, completed_status)
+        remember_route_lease(scope, payload, step, decision, completed_status,
+                             request_token=request_token)
         log_line({
             "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "policy_version": POLICY_VERSION,
