@@ -64,7 +64,15 @@ export function createCursorPublicServer({
   routedModels = routedClientModels,
 } = {}) {
   return http.createServer((request, response) => {
-    const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
+    let url;
+    try {
+      url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
+    } catch {
+      writeJson(response, 400, {
+        error: { type: "invalid_request_error", message: "Invalid request URL or Host header." },
+      });
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/health") {
       writeJson(response, 200, { ok: true, service: "codex-router-cursor-edge" });
       return;

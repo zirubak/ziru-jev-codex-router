@@ -1,0 +1,146 @@
+{
+  "release": "v0.1.0-preview.3",
+  "date": "2026-10-11",
+  "base_commit": "50f01ac099160a781d833974138f95b3474edf49",
+  "candidate_identity": {
+    "method": "base commit plus changed-file SHA-256; this self-referential verification file is excluded",
+    "changed_file_sha256": {
+      "CONTRIBUTING.md": "b5ad6f9d6312433b62cf2980420acd18cd5098e0b8c01150877507b0a3a2de6e",
+      "README.ko.md": "a7787b2cb193304ca18418bf9f499dbe5fbd6458d4f3b7aa95cf889e89918b3d",
+      "README.md": "cd893b2431c14d56bbe4f31e2df7100c0ded9ba6f569d28df84945ef10ce85cd",
+      "SECURITY.md": "98e9b0cb4fc754db9715c538ff82750e463e44a06cd2347c7d327620b3b5e395",
+      "docs/RELEASING.md": "005b3006fa64356a812199d0a94895e7ef458064375eec8656665792830249ac",
+      "docs/SUPPORT.md": "9775040a0d751fd021283940a62854420e3a938cce939ddf6e5f35ab0a8d1957",
+      "docs/release/v0.1.0-preview.3.md": "16ddb8b0255667541cea669c2daa166344b3067d8d777378ec3ecc725fed3744",
+      "hook/README.md": "30e4bd55fc4ad59c0af6e2e8f5249cee038e09c9c05861020cfc31e433e6b9b8",
+      "router/README.md": "703ecbd4b1d450eaee07d8d3be2c7104bef8eab1881ba8b36885fba8b0f3ff3f",
+      "router/SECURITY.md": "8d8fb26027236d13df19281375f0732ee5f0b51da270ca5c8026608b3ded3fc8",
+      "router/apps/control-center/package-lock.json": "fe20372174d88776d17fddd89e92b8268c466618fb0f6fe870a205c2b54ee79c",
+      "router/apps/control-center/package.json": "1e1cf7cc71fa467f1fba55f385bfbc8d30bc47c0b6751e4279af29ab99617f49",
+      "router/apps/control-center/test/renderer.test.mjs": "0fa460dacf0819f9a6b8a62f16f7d5c6170a6d86f2d69f3538697fc8ff8c75a0",
+      "router/docs-site/package-lock.json": "c914ff5b78c9a2331d4bfe50adb78940046546cd6b4ff23796ed18cb39491568",
+      "router/requirements/python.in": "3af4ea78b43a0d3ba22a681c9aa985b84d4ee63384d11bdcd45f5f6d05a0c989",
+      "router/requirements/python.txt": "83a43c1198c81922dc615da4b0f02be5b1aff22cebc524c0153e876f6c24ebbc",
+      "router/scripts/verify-grok-service-tier.mjs": "c2072167ed068509cc4e0516c01354e78f966d49ba327dc8f9cb9f386e4bd7eb",
+      "router/src/cursor-public-edge.mjs": "8592cbd6495a94a74cdfc6d3a3adeda4d8ca5d770f436a5948755bf7fe4b88c1",
+      "router/src/install-plan.mjs": "80330a6d19931d0e90dabd71e9ace14722f40adf1c1751055164e44ca3d75bb3",
+      "router/src/litellm-config.mjs": "e0a7a9ee4b45ab078f68695e736e1e52c5bbfa441cf64900ddae78352f227b15",
+      "router/src/router.mjs": "fcd546ac21e8b1ef4956f503dfeaad3d752c9ec5c987d07dd4cab623632039c8",
+      "router/test/cursor-public-edge.test.mjs": "c9d3ffcecefbeac588b09c03a3a017808e639ce8dad14485ce6f0974a6fd2356",
+      "router/test/gateway-boundary-security.test.mjs": "7af8461a0a12ca104c2d30f1bbd56e4e6a03e93be6d8ee8bebe559f48c29915f",
+      "router/test/homebrew-formula.test.mjs": "92d71d8486b13aab6c311b5ae8bfb44600629b913e91a345cfc5340378dfb796",
+      "router/test/install-plan.test.mjs": "f24fbb8fe94c1088a21bf96203f05d57ee9df71dcb96613f71005dd547739c24"
+    }
+  },
+  "environment": {
+    "os": "macOS arm64",
+    "python_test": "3.14.7",
+    "python_gateway_install": "3.12.11",
+    "node": "22.19.0"
+  },
+  "checks": {
+    "python_unittest": {
+      "total": 389,
+      "pass": 388,
+      "skip": 1,
+      "fail": 0
+    },
+    "router_node": {
+      "total": 4861,
+      "pass": 4818,
+      "skip": 43,
+      "fail": 0
+    },
+    "control_center": {
+      "total": 101,
+      "pass": 100,
+      "skip": 1,
+      "fail": 0
+    },
+    "compileall": "PASS",
+    "offline_routing_dossiers": {
+      "pass": 16
+    },
+    "router_syntax": "PASS",
+    "shell_syntax": "PASS",
+    "whitespace": "PASS",
+    "root_prepare_only": "PASS",
+    "hash_locked_uv_and_pip_install": "PASS",
+    "hash_missing_negative_controls": "PASS",
+    "real_gateway_loopback_health": "PASS",
+    "grok_loopback_scenarios": {
+      "pass": 21
+    },
+    "zai_cache_accounting": "PASS",
+    "security_http_regressions": {
+      "total": 166,
+      "pass": 166
+    },
+    "docs_check": "PASS",
+    "docs_static_pages": 45,
+    "mac_arm64_control_center_package": "PASS",
+    "adhoc_signature_and_electron_node_startup": "PASS",
+    "delta_gitleaks": {
+      "findings": 0
+    },
+    "independent_security_override_validation": {
+      "attack_forms_blocked": 10,
+      "safe_control": "PASS",
+      "native_to_gateway_failover_dispatches": 0
+    }
+  },
+  "dependency_audit": {
+    "python_applicable_packages": 106,
+    "python_known_vulnerabilities": 0,
+    "control_center": {
+      "critical": 0,
+      "high": 0,
+      "moderate": 8,
+      "residual_advisory": "GHSA-hp3w-g68c-fv3c",
+      "boundary": "build dependencies absent from packaged app.asar"
+    },
+    "docs": {
+      "critical": 0,
+      "high": 0,
+      "moderate": 10,
+      "residual_advisory": "GHSA-rj75-hqrm-r3gf",
+      "boundary": "static CSS build pipeline"
+    },
+    "python_universal_lock": {
+      "distributions": 111,
+      "name_version_pairs": 114,
+      "known_vulnerabilities": 0,
+      "skipped": 0,
+      "method": "Audit marker-free advisory inputs grouped by unique package name; no package installation or resolution"
+    }
+  },
+  "integrated_review": {
+    "status": "PASS",
+    "perspectives": {
+      "code": "PASS; no findings",
+      "Python/dependency": "PASS; no blocking findings",
+      "security": "PASS; no blocking findings; independent override and failover probes"
+    },
+    "reviewed_behavior_commit": "00ebeda264f68d95e9446f770310493de5514c0f",
+    "review_report_sha256": {
+      "final-code-review.md": "66a8b1390a3494de75828bbc69eefa079486176671885a2e9a1bc07b84f08b23",
+      "final-python-review.md": "3814efbaf065ae2081a92bd39dafed218dd1498f29dad72af7d9fb213b17d0c6",
+      "final-security-review.md": "06f9caa8c28106fef954137d0be2ea5e0f08cd2afc7f679650523bc587b44a68"
+    },
+    "reports": "Private local reports retained; hashes bind the completed review without publishing private audit material"
+  },
+  "limits": [
+    "GitHub Actions disabled; no remote CI run claimed",
+    "No production installation, Desktop restart or real provider inference",
+    "No full launchd/credential-store rollback certification",
+    "No Linux/Windows/Intel macOS product qualification",
+    "No distributable certificate signing/notarization",
+    "Open Desktop Plan issue #30",
+    "Internal LiteLLM and metadata callback override checks fail closed but optional prisma import can return500; direct router transport/routing override rejection returns400; failover may preserve original upstream error without gateway dispatch",
+    "Embedded upstream Homebrew formula is unchanged and unsupported for Jev",
+    "Star History chart render unverified: HTTP403/browser client block",
+    "Python full run emitted a ResourceWarning for cleanup of synthetic HTTP429; unittest verdict passed",
+    "Optional Ruff inspection found14 existing style/unused-code findings in unchanged files; no universal Python lint-clean claim"
+  ],
+  "learning": "No durable learning"
+}

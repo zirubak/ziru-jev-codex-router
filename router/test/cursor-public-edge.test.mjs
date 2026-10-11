@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -47,5 +53,49 @@ test("Cursor public edge exposes only the secret-bearing app surface", async () 
     );
   } finally {
     await Promise.all([close(edge), close(upstream)]);
+  }
+});
+
+test("malformed unauthenticated Host and URL return 400 without stopping the edge", async (t) => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "cursor-edge-malformed-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const moduleUrl = new URL("../src/cursor-public-edge.mjs", import.meta.url).href;
+  const source = `import { createCursorPublicServer } from ${JSON.stringify(moduleUrl)};
+    const server = createCursorPublicServer({ publicSecret: ${JSON.stringify(SECRET)},
+      responsesUrl: 'http://127.0.0.1:1/unused', routedModels: () => ({ models: [] }) });
+    server.listen(0, '127.0.0.1', () => console.log(server.address().port));`;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", source], {
+    env: { PATH: process.env.PATH, HOME: home, CODEX_HOME: path.join(home, "codex"), CODEX_ROUTER_STATE_DIR: path.join(home, "state") },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let errors = "";
+  child.stderr.on("data", (chunk) => { errors += chunk; });
+  t.after(async () => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = once(child, "exit");
+    child.kill("SIGTERM");
+    await exited;
+  });
+  const ready = await Promise.race([
+    once(child.stdout, "data").then(([data]) => Number(String(data).trim())),
+    once(child, "exit").then(([code]) => { throw new Error(`Cursor edge exited ${code}: ${errors}`); }),
+  ]);
+  for (const [target, host] of [["/health", "["], ["http://[", "127.0.0.1"]]) {
+    const raw = await new Promise((resolve, reject) => {
+      const socket = net.connect(ready, "127.0.0.1", () => {
+        socket.write(`GET ${target} HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`);
+      });
+      let received = "";
+      socket.setEncoding("utf8");
+      socket.setTimeout(5_000, () => socket.destroy(new Error("Cursor edge did not answer malformed request")));
+      socket.on("data", (chunk) => { received += chunk; });
+      socket.once("error", reject);
+      socket.once("end", () => resolve(received));
+    });
+    assert.match(raw, /^HTTP\/1\.1 400 /, errors);
+    const health = await fetch(`http://127.0.0.1:${ready}/health`, { signal: AbortSignal.timeout(5_000) });
+    assert.equal(health.status, 200);
+    assert.equal((await health.json()).ok, true);
+    assert.equal(child.exitCode, null);
   }
 });

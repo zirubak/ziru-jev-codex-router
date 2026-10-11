@@ -1006,12 +1006,51 @@ function routedHeaders(request, route) {
 // DeepSeek's current model already speaks Codex's wire protocol. The shared
 // API forwarder still owns credentials and upstream transport; bypass only
 // LiteLLM, whose unknown-model fallback simulates native Responses streaming.
-function routedResponsesTarget(route, request) {
+function usesGatewayResponses(route, request) {
   // Jev's native wire format must reach its decision relay without a gateway
   // translating additional_tools or discarding the protocol negotiation header.
   const nativeJev = requiresCanonicalReplay(route)
     && request?.headers["x-openai-internal-codex-responses-lite"] === "true";
-  return `${usesDeepSeekResponses(route) || nativeJev ? API_BASE : GATEWAY_BASE}/responses`;
+  return !usesDeepSeekResponses(route) && !nativeJev;
+}
+
+function routedResponsesTarget(route, request) {
+  return `${usesGatewayResponses(route, request) ? GATEWAY_BASE : API_BASE}/responses`;
+}
+
+// Gateway deployments own transport, credentials and failover. These SDK-only
+// controls must never inherit the internal service capability from a caller.
+// Keep inference extensions open, and inspect only configuration containers:
+// a tool schema or conversation may legitimately discuss these field names.
+const GATEWAY_CONTROL_FIELDS = new Set([
+  "api_base", "base_url", "api_key", "api_version", "api_type",
+  "custom_llm_provider", "organization", "project", "deployment_id",
+  "credential_name", "litellm_credential_name", "azure_ad_token",
+  "aws_access_key_id", "aws_secret_access_key", "aws_session_token",
+  "aws_web_identity_token", "aws_role_name", "aws_sts_endpoint",
+  "aws_bedrock_runtime_endpoint", "s3_endpoint_url", "sagemaker_base_url",
+  "deployment_url", "vertex_credentials", "vertex_ai_credentials",
+  "vertex_project", "vertex_location", "user_config", "model_list",
+  "fallbacks", "context_window_fallbacks", "content_policy_fallbacks",
+  "router_settings_override", "litellm_params", "litellm_settings",
+  "litellm_embedding_config", "headers", "extra_headers", "extra_query",
+]);
+
+function assertGatewayRequestPayload(payload, route, request) {
+  if (!usesGatewayResponses(route, request)) return;
+  // Iteration keeps even deeply nested extra_body input off the call stack.
+  for (let fields = payload; fields != null; fields = fields.extra_body) {
+    if (
+      typeof fields !== "object" || Array.isArray(fields)
+      || Object.keys(fields).some((key) => GATEWAY_CONTROL_FIELDS.has(key)
+        || (fields !== payload && key === "model"))
+    ) {
+      const error = new Error("Caller-supplied gateway transport, credential or routing overrides are not allowed.");
+      error.status = 400;
+      error.code = "gateway_request_override";
+      throw error;
+    }
+  }
 }
 
 // LiteLLM translates Codex Responses requests into Chat Completions only after
@@ -2879,6 +2918,7 @@ async function summarizeWith(
   signal,
   { searchContract } = {},
 ) {
+  assertGatewayRequestPayload(payload, route, request);
   const destinationInput = await normalizeRoutedAgentInput(request, aged.input, signal, route);
   const compatibleInput = zenFreeCompatibleInput(
     normalizeProviderAppToolOutputs(destinationInput),
@@ -3447,6 +3487,7 @@ function observeSubagentOutcome(request, route, status, options = {}) {
 // `agedInput`. The tool list is a local, and the input array is copied before
 // anything rewrites it.
 async function buildRoutedRequest({ request, payload, route, agedInput }) {
+  assertGatewayRequestPayload(payload, route, request);
   const searchCompatibility = routedSearchCompatibility(payload, route);
   payload = searchCompatibility.payload;
   let namespacesFlattened = false;
@@ -4332,6 +4373,7 @@ async function handleResponses(request, response, requestUrl) {
       writeIdleNoProviderError(response);
       return;
     }
+    if (route) assertGatewayRequestPayload(payload, route, request);
     // Activity and usage attribute protocol variants to their canonical
     // family so the tray Island and graphs show one provider per subscription.
     activity.setRoute({

@@ -108,6 +108,7 @@ export function renderLiteLlmConfig() {
     "",
     "general_settings:",
     "  disable_spend_logs: true",
+    "  allow_client_side_credentials: false",
     "",
   );
   return lines.join("\n");

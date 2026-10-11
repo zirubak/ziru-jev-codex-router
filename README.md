@@ -1,12 +1,12 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
-Current prerelease: [v0.1.0-preview.2 changes and limits](docs/release/v0.1.0-preview.2.md). [Published release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.2). See the notes for installation and validation limits.
+Current prerelease: [v0.1.0-preview.3 changes and limits](docs/release/v0.1.0-preview.3.md). [Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3). See the notes for installation and validation limits.
 
 # ZIRU Jev Codex Router
 
 **Let Codex choose the model and thinking effort for each stage of your work.**
 
-![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) [![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
+![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) · [Local release validation](docs/release/v0.1.0-preview.3.md#validation)
 
 [한국어](README.ko.md) · [Install](#install) · [Examples](#what-youll-see) · [How it works](#how-it-works) · [Star this project](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
@@ -32,6 +32,10 @@ recovery and verification details.
 An optional, contract-checked [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
 keeps the existing effort menu and separates Auto/Manual by name. The owner confirmed Auto/Manual switching and the effort slider in a fresh
 Desktop session on 2026-10-02. Ordinary installation does not enable this bridge.
+
+**Known Desktop limitation:** selecting Plan can reset in the UI
+([issue #30](https://github.com/zirubak/ziru-jev-codex-router/issues/30)).
+Native Plan transport checks do not establish that this UI behavior is fixed.
 
 ## Choose a routing mode in Desktop
 
@@ -177,7 +181,7 @@ not pin this preview tag. To opt into or refresh the Desktop launcher after the
 update, run `./install.sh --desktop` separately. The updater does not forward
 `--desktop`. Quit and reopen Desktop yourself when ready.
 
-See the [preview.2 changes and known limits](docs/release/v0.1.0-preview.2.md)
+See the [preview.3 changes and known limits](docs/release/v0.1.0-preview.3.md)
 and [diagnostics and recovery](server/INSTALL.md).
 
 ### Ask Codex to update it
@@ -229,7 +233,7 @@ If you only use the CLI profile, start a new `codex -p jev` session instead.
 
 ## Install
 
-This is a **private preview for macOS Codex Desktop**. You need access to this repository, a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).
+This is a **public preview for macOS Codex Desktop**. You need a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).
 
 ### First, give Jev its little key
 
@@ -464,7 +468,7 @@ Start with `bin/jev-codex-router router doctor` if the model is missing or reque
 | [Release test record](docs/release/release-test-record-template.md) | Reusable candidate, result and request-correlation template |
 | [Review fixes #32–#38](docs/release/review-fixes-32-38-2026-10-06.md) | Request privacy, quota state, Desktop selection and installer regression evidence |
 | [Responses-lite quota recovery #40](docs/release/lite-quota-recovery-2026-10-08.md) | Early native quota reset recovery with canonical replay and manual dry protection |
-| [Releases](docs/RELEASING.md) | Release checks; Star History setup deferred until public release |
+| [Releases](docs/RELEASING.md) | Release checks, published previews and validation limits |
 
 **Windows is unverified.** The maintainer has not tested Windows installation or end-to-end use. The root installer uses macOS launchd; portable `router/` CI does not establish Windows product support. Windows testers are welcome to try that component in an isolated environment and [share feedback](https://github.com/zirubak/ziru-jev-codex-router/issues). Include OS, Node.js and Codex versions, commit, reproduction steps and sanitized errors. Leave out keys, authentication files, raw conversations and backups.
 

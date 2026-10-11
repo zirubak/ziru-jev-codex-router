@@ -4,8 +4,9 @@
 
 Report suspected vulnerabilities in this monorepo, including its embedded
 `router/` fork, through
-[GitHub Private Vulnerability Reporting](https://github.com/0xNatoshi/jev-codex-router/security/advisories/new).
-This channel was enabled and read back on 2026-09-22.
+[GitHub Private Vulnerability Reporting](https://github.com/zirubak/ziru-jev-codex-router/security/advisories/new).
+This is the reporting channel for the ZIRU fork, including changes to its
+embedded router. Reports must reach this repository's maintainers.
 Do not post vulnerability details in public issues. If the private form is
 unavailable, request a private contact without disclosing technical details.
 
