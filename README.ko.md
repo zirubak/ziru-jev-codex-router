@@ -395,4 +395,6 @@ Jev 요청은 `https://api.typesafe.ai/v1/systemone`으로 직접 보내며 Verc
 ZIRU는 연구 자료를 반영한 Auto·Manual 정책, effort를 조절하는 Sol·Astra 고정 경로,
 모드별 기술적 fallback, 응답의 모델 표시, Ultra 수동 권고와 설치 보호 기능을 더했습니다.
 
+[@singbomb](https://github.com/singbomb)님과 함께 개발했습니다. [Medium 블로그](https://medium.com/@sbaek2007)도 운영하고 있습니다.
+
 프로젝트를 만들며 얻은 실험 결과와 AI 코딩 활용 이야기는 [ZIRU의 Medium 블로그](https://medium.com/@jh.baek.sd)에서 읽을 수 있습니다. 저장소에는 [프로젝트 공유용 이미지](docs/assets/social-preview.png)도 포함되어 있습니다.

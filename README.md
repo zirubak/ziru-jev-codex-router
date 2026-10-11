@@ -518,4 +518,7 @@ ZIRU adds research-informed Auto/Manual routing, fixed Sol/Astra routes with
 adaptive effort, mode-specific technical fallback, visible route labels,
 manual Ultra advice and installation safeguards.
 
+Co-developed with [@singbomb](https://github.com/singbomb), who also writes on
+[Medium](https://medium.com/@sbaek2007).
+
 For the experiments and practical AI-coding lessons behind this project, visit [ZIRU on Medium](https://medium.com/@jh.baek.sd). The [project sharing image](docs/assets/social-preview.png) is also included in this repository.
