@@ -9499,12 +9499,75 @@ test("Jev collaboration preserves native child inheritance across HTTP", async (
         .map((line) => JSON.parse(line.slice(6)));
       const actual = JSON.parse(events.find((event) => event.type === "response.output_item.done").item.arguments);
       const expected = { ...args };
-      if (expected.model === `jev/${mode}`) delete expected.model;
+      if (expected.model === `jev/${mode}` || ["sol", "astra"].includes(mode)) delete expected.model;
+      if (["sol", "astra"].includes(mode)) delete expected.reasoning_effort;
       assert.deepEqual(actual, expected, `${mode}: ${JSON.stringify(args)}`);
       assert.deepEqual(JSON.parse(events.at(-1).response.output[0].arguments), expected);
     }
   }
 });
+
+for (const mode of ["sol", "astra"]) {
+  test(`Jev fixed ${mode} subagents inherit the carrier despite explicit model overrides`, async (t) => {
+    let argumentsText;
+    const fixture = await jevCollaborationFixture(t, async (_request, response) => {
+      const item = { type: "function_call", namespace: "collaboration", name: "spawn_agent",
+        call_id: "call_fixed_child", arguments: argumentsText };
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      for (const event of [
+        { type: "response.output_item.done", item },
+        { type: "response.completed", response: { id: "resp_fixed_child", status: "completed", output: [item] } },
+      ]) response.write(`data: ${JSON.stringify(event)}\n\n`);
+      response.end();
+    });
+    for (const [model, forkTurns] of [undefined, "gpt-6.1-sol", "gpt-6-astra", "jev/auto", "jev/manual"]
+      .flatMap(model => [[model, "none"], [model, "all"]])) {
+      const args = { task_name: "child", message: "Return the marker.", model,
+        reasoning_effort: "high", fork_turns: forkTurns };
+      argumentsText = JSON.stringify(args);
+      const response = await fixture.request({ model: `jev/${mode}`, input: "Delegate the marker.", stream: true,
+        tools: [{ type: "namespace", name: "collaboration", tools: [{ type: "function", name: "spawn_agent",
+          parameters: { type: "object", properties: { model: { type: "string" } } } }] }] });
+      assert.equal(response.status, 200);
+      const events = (await response.text()).split("\n").filter(line => line.startsWith("data: "))
+        .map(line => JSON.parse(line.slice(6)));
+      const { model: _override, reasoning_effort: _effort, ...expected } = args;
+      assert.deepEqual(JSON.parse(events.find(event => event.type === "response.output_item.done").item.arguments), expected);
+      assert.deepEqual(JSON.parse(events.at(-1).response.output[0].arguments), expected);
+    }
+  });
+
+  test(`Jev fixed ${mode} compaction preserves complete old tool evidence`, async (t) => {
+    const bodies = [];
+    const fixture = await jevCollaborationFixture(t, async (request, response) => {
+      bodies.push(await bodyJson(request));
+      json(response, 200, { output: [{ type: "message", role: "assistant", content: "Preserve all source evidence." }] });
+    });
+    writeFileSync(path.join(fixture.directory, "tool-result-aging.json"), JSON.stringify({
+      version: 1, enabled: true, nativeEnabled: false,
+    }));
+    const oldOutput = `${"a".repeat(20_000)}MIDDLE_EVIDENCE_MUST_SURVIVE${"z".repeat(20_000)}`;
+    const input = [
+      { type: "function_call", call_id: "old-evidence", name: "read_fixture", arguments: "{}" },
+      { type: "function_call_output", call_id: "old-evidence", output: oldOutput },
+      { type: "message", role: "assistant", content: "Read the evidence." },
+      ...Array.from({ length: 5 }, (_, index) => [
+        { type: "function_call", call_id: `later-${index}`, name: "read_fixture", arguments: "{}" },
+        { type: "function_call_output", call_id: `later-${index}`, output: `Later result ${index}` },
+        { type: "message", role: "assistant", content: "Progress." },
+      ]).flat(),
+    ];
+    for (const [endpoint, trigger] of [["responses/compact", false], ["responses", true]]) {
+      const response = await fixture.request({ model: `jev/${mode}`, stream: false,
+        input: [...input, ...(trigger ? [{ type: "compaction_trigger" }] : [])],
+      }, { endpoint });
+      assert.equal(response.status, 200, await response.text());
+      assert.deepEqual(bodies.at(-1).input.slice(0, input.length), input,
+        "The fixed native executor must receive the complete tool evidence before summarizing");
+    }
+    assert.equal(fixture.nativeCalls.length, 0);
+  });
+}
 
 test("Jev collaboration forwards encrypted handoffs without a plaintext relay", async (t) => {
   const bodies = [];
