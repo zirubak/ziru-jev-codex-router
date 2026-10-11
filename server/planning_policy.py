@@ -2,6 +2,7 @@
 import copy
 
 from routing_policy import QUESTIONS, _validated_choice
+from fixed_model_policy import fixed_questions
 
 PLAN_QUESTION_MAX_CHARS = 6500
 PLAN_GUIDANCE_MAX_CHARS = 1800
@@ -19,15 +20,16 @@ REVIEW_PROFILES = {
 }
 
 
-def planning_questions() -> dict:
+def planning_questions(fixed_model: str | None = None) -> dict:
     """Preserve the default question budget; extend only native Plan requests."""
-    questions = copy.deepcopy(QUESTIONS)
-    questions["model"]["instructions"] += (
-        " Native Plan mode prioritizes robust planning quality. Substantive uncertain "
-        "design needs strong capability; trivial clerical changes to an accepted plan "
-        "can use a lighter model. Retain mandatory Astra architecture/final/risk policy. "
-        "Do not equate every plan with architecture."
-    )
+    questions = fixed_questions() if fixed_model else copy.deepcopy(QUESTIONS)
+    if not fixed_model:
+        questions["model"]["instructions"] += (
+            " Native Plan mode prioritizes robust planning quality. Substantive uncertain "
+            "design needs strong capability; trivial clerical changes to an accepted plan "
+            "can use a lighter model. Retain mandatory Astra architecture/final/risk policy. "
+            "Do not equate every plan with architecture."
+        )
     questions["effort"]["instructions"] += (
         " For substantive planning assess uncertainty, interacting constraints, alternatives "
         "and failure impact; use high or greater when useful. Clerical plan edits can "

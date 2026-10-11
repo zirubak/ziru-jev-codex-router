@@ -13,7 +13,7 @@ export function validateRouteRecord(record) {
   if (!record || Object.keys(record).sort().join() !== KEYS.join()
       || record.version !== 1 || typeof record.threadId !== 'string' || !record.threadId
       || !Number.isSafeInteger(record.revision) || record.revision < 1
-      || !['auto', 'manual', 'official'].includes(record.mode)
+      || !['auto', 'manual', 'sol', 'astra', 'official'].includes(record.mode)
       || !['confirmed', 'pending'].includes(record.phase)
       || typeof record.model !== 'string' || !record.model
       // Official efforts belong to the native client, including client-level Ultra.

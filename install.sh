@@ -34,7 +34,7 @@ Install Jev Codex Router from the embedded router fork.
   -h, --help      Show this help.
 
 The full install preserves any configured router providers, adds or updates the
-local Jev provider and both Jev models, provisions its protected loopback
+local Jev provider and all four Jev models, provisions its protected loopback
 credential, enables native ChatGPT sharing, installs both launchd services, and
 runs the end-to-end smoke test.
 EOF
@@ -153,6 +153,8 @@ fi
 "$router_cli" refresh-catalog
 "$router_dir/bin/control" picker set jev/auto show
 "$router_dir/bin/control" picker set jev/manual show
+"$router_dir/bin/control" picker set jev/sol show
+"$router_dir/bin/control" picker set jev/astra show
 # The gateway registry is loaded at startup. Restart after final model/auth
 # publication so advertised new routes are immediately executable.
 "$router_dir/bin/control" service restart

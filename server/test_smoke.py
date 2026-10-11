@@ -100,6 +100,28 @@ class SmokeRecoveryHttp(unittest.TestCase):
         self.assertFalse(Path(jev.DRY_STATE_PATH).exists())
         self.candidates.assert_not_called()
 
+    def test_smoke_checks_both_fixed_native_routes(self) -> None:
+        original_post = Edge.do_POST
+
+        def native(edge: Edge) -> None:
+            data = edge.rfile.read(int(edge.headers["Content-Length"]))
+            body = json.loads(data)
+            edge.rfile = io.BytesIO(data)
+            with mock.patch.object(fixture, "COMPLETED", fixture.COMPLETED.replace(
+                b'"model":"gpt-6.1-sol"', f'"model":"{body["model"]}"'.encode(),
+            )):
+                original_post(edge)
+
+        for route, model in (("sol", jev.SOL_61), ("astra", jev.ASTRA)):
+            with self.subTest(route=route), mock.patch.object(Edge, "do_POST", native):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    smoke.main(f"jev/{route}")
+                result = json.loads(output.getvalue())
+                self.assertEqual(result["model"], model)
+                self.assertEqual(result["status"], "completed")
+        self.candidates.assert_not_called()
+
     def test_smoke_fresh_quota_refusal_fails_without_external_execution(self) -> None:
         def limited(edge: Edge) -> None:
             Edge.payloads.append(json.loads(edge.rfile.read(int(edge.headers["Content-Length"]))))
@@ -118,6 +140,27 @@ class SmokeRecoveryHttp(unittest.TestCase):
         self.assertEqual(len(Edge.payloads), 1)
         self.assertEqual(jev.native_dry(), "quota")
         self.candidates.assert_not_called()
+
+    def test_smoke_rejects_wrong_or_missing_terminal_native_model(self) -> None:
+        original_post = Edge.do_POST
+        for terminal_model in (jev.ASTRA, None):
+            def mismatched(edge: Edge) -> None:
+                events = fixture.COMPLETED.split(b'\n\n')
+                completed = json.loads(events[1][6:])
+                if terminal_model is None:
+                    completed["response"].pop("model", None)
+                else:
+                    completed["response"]["model"] = terminal_model
+                events[1] = b'data: ' + json.dumps(completed).encode()
+                with mock.patch.object(fixture, "COMPLETED", b'\n\n'.join(events)):
+                    original_post(edge)
+
+            with self.subTest(terminal_model=terminal_model), mock.patch.object(
+                Edge, "do_POST", mismatched,
+            ), contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(
+                RuntimeError, "native response did not confirm the selected model",
+            ):
+                smoke.main("jev/sol")
 
 
 if __name__ == "__main__":

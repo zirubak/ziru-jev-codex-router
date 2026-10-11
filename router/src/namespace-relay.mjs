@@ -659,7 +659,7 @@ export function injectSessionModelForSpawnCalls(item, model, effortForModel) {
   if (typeof args !== "object" || args === null || Array.isArray(args)) return item;
   // Jev's public alias is not a native collaboration model. The child must
   // inherit the parent's carrier and scoped provider, including on full forks.
-  if (isSubagentSpawnCall(item) && (model === "jev/auto" || model === "jev/manual")) {
+  if (isSubagentSpawnCall(item) && ["jev/auto", "jev/manual", "jev/sol", "jev/astra"].includes(model)) {
     if (args.model === undefined || args.model === null || args.model === "") return item;
     if (args.model === model) {
       const { model: _alias, ...inherited } = args;

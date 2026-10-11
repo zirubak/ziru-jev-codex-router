@@ -113,12 +113,12 @@ function verifyHttp(context, req, body) {
   context.httpRequests += 1;
 }
 
-function refuseRecovery(context, req, body, res) {
-  const recovery = context.recovery;
+function refuseRecovery(context, recovery, req, body, res) {
   requireSafety(req.method === 'POST' && ['/v1/responses', '/v1/responses/compact'].includes(req.url),
     'bare native recovery used an unexpected HTTP path');
   requireSafety(req.headers['x-jev-desktop-recovery'] === 'required'
-    && req.headers['x-jev-selection-mode'] === recovery.mode && body.model === CARRIER,
+    && req.headers['x-jev-selection-mode'] === recovery.mode && req.headers['thread-id'] === recovery.threadId
+    && body.model === CARRIER,
   'bare native did not preserve the persisted recovery guard');
   recovery.requests += 1;
   requireSafety(recovery.requests <= 16, 'bare native repeatedly retried the recovery refusal');
@@ -135,7 +135,7 @@ async function startResponder(context) {
     void (async () => {
       // Bind this request to its turn synchronously, before any await, so
       // overlapping requests cannot both claim one expected turn.
-      const recovery = context.recovery;
+      const recovery = context.recoveries.get(req.headers['x-jev-selection-mode']);
       const expected = recovery ? null : context.expected;
       if (!recovery) {
         const { pathname } = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -153,13 +153,14 @@ async function startResponder(context) {
       }
       // Confirm the captured turn still owns this request before parsing, so a
       // stale or post-failure body is a hard stop even when it is malformed.
-      if (recovery) requireSafety(context.recovery === recovery, 'native sent HTTP outside the bare native recovery turn');
+      if (recovery) requireSafety(context.recoveries.get(recovery.mode) === recovery && !context.error,
+        'native sent HTTP outside the bare native recovery turn');
       else requireSafety(context.expected === expected && !context.error,
         'native sent HTTP outside an expected qualification turn');
       let body;
       try { body = JSON.parse(Buffer.concat(chunks)); }
       catch { throw new DesktopContractMismatch('native HTTP JSON protocol changed'); }
-      if (recovery) return refuseRecovery(context, req, body, res);
+      if (recovery) return refuseRecovery(context, recovery, req, body, res);
       verifyHttp(context, req, body);
       respond(res, context.httpRequests);
     })().catch((error) => {
@@ -177,7 +178,7 @@ async function startResponder(context) {
   });
   context.provider = { name: 'Jev isolated compatibility probe', base_url: `http://127.0.0.1:${server.address().port}/v1`,
     wire_api: 'responses', requires_openai_auth: false };
-  for (const mode of ['auto', 'manual']) {
+  for (const mode of ['auto', 'manual', 'sol', 'astra']) {
     context.config += `\n[model_providers.jev-router-${mode}]\nname = "Jev recovery probe"\nbase_url = ${JSON.stringify(context.provider.base_url)}\nwire_api = "responses"\nrequires_openai_auth = false\nhttp_headers = { "x-jev-desktop-recovery" = "required", "x-jev-selection-mode" = "${mode}" }\n`;
   }
   await writeFile(join(context.directory, 'config.toml'), context.config, { mode: 0o600 });
@@ -265,7 +266,7 @@ class NativeSession {
     }
     requireContract(typeof message.method === 'string', 'native notification protocol changed');
     const mapped = this.bridge.notification(message);
-    const recovery = this.context.recovery;
+    const recovery = [...this.context.recoveries.values()].find((entry) => entry.threadId === message.params?.threadId);
     if (message.method === 'item/started' && message.params?.item?.type === 'contextCompaction') {
       if (recovery?.threadId === message.params.threadId) {
         this.context.recoveryCompactionAttempts += 1;
@@ -274,7 +275,7 @@ class NativeSession {
       this.context.compactions += 1;
       return this.fail(failure('unexpected automatic context compaction'));
     }
-    if (recovery && (message.method === 'item/agentMessage/delta'
+    if (this.context.recoveries.size && (message.method === 'item/agentMessage/delta'
       || ['item/started', 'item/completed'].includes(message.method) && message.params?.item?.type === 'agentMessage')) {
       this.context.recoveryModelOutputs += 1;
       return this.fail(failure('bare native recovery produced model output despite refusal'));
@@ -320,7 +321,7 @@ class NativeSession {
         'native model list pagination did not terminate');
       cursors.add(cursor);
     } while (cursor != null);
-    requireContract([CARRIER, 'jev/auto', 'jev/manual'].every((model) => models.has(model)),
+    requireContract([CARRIER, 'jev/auto', 'jev/manual', 'jev/sol', 'jev/astra'].every((model) => models.has(model)),
       'native model list does not expose the carrier and Jev selections');
   }
 
@@ -420,15 +421,17 @@ async function turn(session, threadId, mode, effort, useCollaboration = true) {
 async function recoveryTurn(session, threadId, mode) {
   const context = session.context;
   const before = session.noticeSequence;
-  context.recovery = { threadId, mode, requests: 0 };
+  requireSafety(!context.recoveries.has(mode), 'duplicate bare native recovery mode');
+  const recovery = { threadId, mode, requests: 0 };
+  context.recoveries.set(mode, recovery);
   try {
     await session.request('turn/start', { threadId,
       input: [{ type: 'text', text: 'Synthetic recovery guard check. Do not call tools.', text_elements: [] }] });
     const notice = await session.waitNotice('turn/completed', threadId, before);
-    requireSafety(notice.raw.params.turn?.status === 'failed' && context.recovery.requests > 0
+    requireSafety(notice.raw.params.turn?.status === 'failed' && recovery.requests > 0
       && context.recoveryModelOutputs === 0, 'bare native recovery did not stop after the HTTP refusal');
     if (context.error) throw context.error;
-  } finally { context.recovery = null; }
+  } finally { context.recoveries.delete(mode); }
 }
 
 async function exercise(context) {
@@ -443,20 +446,20 @@ async function exercise(context) {
   context.checks.push('initialize-model-list');
   let autoThread;
   const threads = [];
-  for (const mode of ['manual', 'auto']) {
+  for (const mode of ['manual', 'auto', 'sol', 'astra']) {
     const started = await session.bridge.handle('thread/start', { model: `jev/${mode}`, cwd: context.directory,
       permissions: ':read-only', approvalPolicy: 'never', config: { model_reasoning_effort: 'medium' } });
     requireContract(started.model === `jev/${mode}` && started.modelProvider === `jev-router-${mode}`, 'thread start lost Jev identity');
     verifyPermissions(started);
     const threadId = started.thread.id;
     threads.push({ threadId, mode });
-    for (const effort of mode === 'manual' ? EFFORTS : ['low', 'high']) {
+    for (const effort of mode === 'auto' ? ['low', 'high'] : EFFORTS) {
       await settings(session, threadId, mode, effort);
       await turn(session, threadId, mode, effort);
     }
     if (mode === 'auto') autoThread = threadId;
   }
-  context.checks.push('manual-efforts', 'auto-routing', 'nested-settings', 'canonical-input-tools', 'collaboration-mode', 'read-only-permissions');
+  context.checks.push('manual-efforts', 'sol-efforts', 'astra-efforts', 'auto-routing', 'nested-settings', 'canonical-input-tools', 'collaboration-mode', 'read-only-permissions');
   await session.close();
   session = await connect();
   const previousRequests = context.httpRequests;
@@ -467,7 +470,10 @@ async function exercise(context) {
   }
   requireSafety(context.httpRequests === previousRequests, 'bare native recovery resume sent an inference request');
   context.checks.push('bare-native-recovery-resume');
-  for (const { threadId, mode } of threads) await recoveryTurn(session, threadId, mode);
+  // Native retries the real refusal for several seconds. Independent threads
+  // retain their own recovery guards while sharing that wait within startup's budget.
+  const recoveries = await Promise.allSettled(threads.map(({ threadId, mode }) => recoveryTurn(session, threadId, mode)));
+  for (const result of recoveries) if (result.status === 'rejected') throw result.reason;
   context.checks.push('bare-native-recovery-http-guard');
   context.checks.push('recovery-registry-native-deep-merge');
   await session.close();
@@ -478,6 +484,15 @@ async function exercise(context) {
   verifyPermissions(resumed);
   await turn(session, autoThread, 'auto', 'high', false);
   context.checks.push('restart-resume');
+  for (const { threadId, mode } of threads.filter((item) => ['sol', 'astra'].includes(item.mode))) {
+    const fixed = await session.bridge.handle('thread/resume', { threadId });
+    requireContract(fixed.model === `jev/${mode}` && fixed.modelProvider === `jev-router-${mode}`
+      && fixed.reasoningEffort === 'max', 'persisted fixed thread lost Jev identity or effort after restart');
+    verifyPermissions(fixed);
+    await turn(session, threadId, mode, 'max', false);
+    await session.bridge.handle('thread/settings/update', { threadId, model: CARRIER, effort: 'high' });
+  }
+  context.checks.push('fixed-restart-resume');
   await session.bridge.handle('thread/settings/update', { threadId: autoThread, model: CARRIER, effort: 'high' });
   await session.close();
   session = await connect();
@@ -485,6 +500,13 @@ async function exercise(context) {
   requireContract(official.model === CARRIER && official.modelProvider === 'openai', 'official provider was not restored');
   verifyPermissions(official);
   context.checks.push('official-provider-restored');
+  for (const { threadId, mode } of threads.filter((item) => ['sol', 'astra'].includes(item.mode))) {
+    const fixedOfficial = await session.bridge.handle('thread/resume', { threadId });
+    requireContract(fixedOfficial.model === CARRIER && fixedOfficial.modelProvider === 'openai',
+      `fixed ${mode} thread did not restore the official provider`);
+    verifyPermissions(fixedOfficial);
+  }
+  context.checks.push('fixed-official-provider-restored');
   await session.close();
   session = await connect();
   const saved = await session.request('thread/read', { threadId: autoThread, includeTurns: false });
@@ -504,7 +526,7 @@ async function exercise(context) {
 export async function probeDesktopContract(nativeBinary, dependencies = {}) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jev-desktop-contract-')));
   const context = { binary: nativeBinary, directory, checks: [], httpRequests: 0, compactions: 0,
-    windowCount: 0, minimumContextWindow: Infinity, history: new Map(), recoveryDeniedRequests: 0,
+    windowCount: 0, minimumContextWindow: Infinity, history: new Map(), recoveries: new Map(), recoveryDeniedRequests: 0,
     recoveryCompactRequests: 0, recoveryCompactionAttempts: 0, recoveryModelOutputs: 0 };
   context.nativeCommand = dependencies.nativeCommand ?? nativeCommand;
   context.createPrivateRouteState = dependencies.createPrivateRouteState

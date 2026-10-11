@@ -106,7 +106,8 @@ from routing_policy import (ASTRA, EFFORTS, FALLBACK_EFFORT, FALLBACK_MODEL, LUN
 from routing_reference import REFERENCE_SHA256, REFERENCE_VERSION, routing_reference
 from ultra_advisory import REASONS as ULTRA_REASONS, recommendation as ultra_recommendation
 from planning_policy import planning_guidance, planning_questions, planning_review
-from selection_policy import (AUTO_ROUTES, MANUAL_ROUTES, SELECTION_POLICY_VERSION,
+from fixed_model_policy import fixed_decision, fixed_profile, fixed_questions
+from selection_policy import (AUTO_ROUTES, FIXED_ROUTES, MANUAL_ROUTES, SELECTION_POLICY_VERSION,
                               normalized_updates, resolve_selection, selection_scope)
 
 POLICY_VERSION = SELECTION_POLICY_VERSION
@@ -585,7 +586,7 @@ def fallback_candidates(native_model, payload, user_effort=None):
                 continue
             slug = entry.get("slug")
             provider = entry.get("provider")
-            if not isinstance(slug, str) or slug in AUTO_ROUTES | MANUAL_ROUTES or provider == "jev" or slug in seen_slugs:
+            if not isinstance(slug, str) or slug in AUTO_ROUTES | MANUAL_ROUTES | FIXED_ROUTES.keys() or provider == "jev" or slug in seen_slugs:
                 continue
             # Current embedded routers already collapse canonical quota
             # families. Keep this executor-side guard for stale/mixed installs:
@@ -1950,6 +1951,12 @@ class Handler(BaseHTTPRequestHandler):
                 }, {
                     "id": "manual", "object": "model", "created": 1758000000,
                     "owned_by": "jev", "name": DISPLAY_NAME,
+                }, {
+                    "id": "sol", "object": "model", "created": 1758000000,
+                    "owned_by": "jev", "name": "Jev Sol Router",
+                }, {
+                    "id": "astra", "object": "model", "created": 1758000000,
+                    "owned_by": "jev", "name": "Jev Astra Router",
                 }],
             })
         elif path in ("/health", ""):
@@ -2023,7 +2030,10 @@ class Handler(BaseHTTPRequestHandler):
         plan_mode = plan_collaboration_mode(payload)
         leased = None if plan_mode else route_lease(scope, payload, step)
         if os.path.exists(OFF_PATH):
-            model, effort, speed, gate = ASTRA, None, "default", "off"
+            model, effort, speed, gate = (
+                selection.fixed_model or ASTRA,
+                FALLBACK_EFFORT if selection.fixed_model else None, "default", "off",
+            )
         else:
             key = load_key()
             if leased is not None:
@@ -2038,6 +2048,8 @@ class Handler(BaseHTTPRequestHandler):
                 jt0 = time.time()
                 state = jev_state(task, prev_assistant, signals, step, affinity)
                 state.update(selection.state())
+                if selection.fixed_model:
+                    state["fixed_model_profile"] = fixed_profile(selection.fixed_model)
                 if plan_mode:
                     state["native_plan"] = True
                     state["planning_context"] = {
@@ -2045,11 +2057,14 @@ class Handler(BaseHTTPRequestHandler):
                         "review_is_recommendation_not_completion": True,
                     }
                 try:
-                    result = (
-                        call_jev_routed(key, state, questions=planning_questions())
-                        if plan_mode else call_jev_routed(key, state)
-                    )
-                    decision = decision_from_answers(result.get("answers"))
+                    if plan_mode:
+                        result = call_jev_routed(key, state, questions=planning_questions(selection.fixed_model))
+                    elif selection.fixed_model:
+                        result = call_jev_routed(key, state, questions=fixed_questions())
+                    else:
+                        result = call_jev_routed(key, state)
+                    decision = (fixed_decision(result.get("answers"), selection.fixed_model)
+                                if selection.fixed_model else decision_from_answers(result.get("answers")))
                     if plan_mode:
                         decision["planning_review"] = planning_review(result.get("answers"))
                         decision["lease"] = "one_call"
@@ -2065,11 +2080,11 @@ class Handler(BaseHTTPRequestHandler):
                     gate = decision["gate"]
                     decision_source = "jev"
                 except Exception as exc:
-                    model, effort, speed, gate = FALLBACK_MODEL, FALLBACK_EFFORT, "default", f"jev_error:{type(exc).__name__}"
+                    model, effort, speed, gate = selection.fixed_model or FALLBACK_MODEL, FALLBACK_EFFORT, "default", f"jev_error:{type(exc).__name__}"
                     decision_source = "technical_fallback"
                 jev_ms = int((time.time() - jt0) * 1000)
             else:
-                model, effort, speed, gate = FALLBACK_MODEL, FALLBACK_EFFORT, "default", "no_key_or_task"
+                model, effort, speed, gate = selection.fixed_model or FALLBACK_MODEL, FALLBACK_EFFORT, "default", "no_key_or_task"
                 decision_source = "technical_fallback"
 
         recommended_effort = effort
@@ -2081,9 +2096,13 @@ class Handler(BaseHTTPRequestHandler):
         shadow_enabled = os.path.exists(SHADOW_PATH)
 
         would = None
-        if shadow_enabled:
+        if shadow_enabled and not (selection.fixed_model and gate == "off"):
             would = {"model": model, "effort": effort, "speed": speed, "gate": gate}
-            model, effort, speed, gate = ASTRA, None, "default", "shadow(astra)"
+            model, effort, speed, gate = (
+                selection.fixed_model or ASTRA,
+                FALLBACK_EFFORT if selection.fixed_model else None, "default",
+                "shadow(fixed)" if selection.fixed_model else "shadow(astra)",
+            )
 
         # Operational bypass preserves inherited valid controls, never Auto.
         if effort is None:
@@ -2109,7 +2128,7 @@ class Handler(BaseHTTPRequestHandler):
         )
 
         def quota_candidates():
-            if lite_replay:
+            if lite_replay or selection.fixed_model:
                 return []
             return (fallback_candidates(model, payload, user_effort=selection.user_effort)
                     if selection.mode == "manual" else fallback_candidates(model, payload))
@@ -2118,7 +2137,7 @@ class Handler(BaseHTTPRequestHandler):
         # failure), replace the OpenAI ladder with locally discovered configured
         # routes. Healthy native turns never enumerate providers.
         dry_reason = native_dry()
-        if lite_replay and dry_reason == "quota":
+        if (lite_replay or selection.fixed_model) and dry_reason == "quota":
             # Lite has no compatible external route. A cached reset deadline
             # cannot prove this native turn is still unavailable after an early
             # quota reset; let its single authoritative attempt decide instead.
@@ -2167,7 +2186,8 @@ class Handler(BaseHTTPRequestHandler):
                 # cannot inherit Plan-only Astra updates.
                 payload["input"] = list(original_plan_input)
                 if (effort in EFFORTS
-                        and (selection.mode == "manual" or (gate != "off" and not shadow_enabled))):
+                        and (selection.mode == "manual" or selection.fixed_model
+                             or (gate != "off" and not shadow_enabled))):
                     payload["input"] = [
                         {
                             **item,
@@ -2199,7 +2219,7 @@ class Handler(BaseHTTPRequestHandler):
                         })
             if selection.mode == "manual" and isinstance(payload.get("input"), list):
                 payload["input"] = normalized_updates(payload["input"], selection.user_effort)
-            if selection.mode == "auto" and isinstance(payload.get("input"), list):
+            if selection.mode in ("auto", "fixed") and isinstance(payload.get("input"), list):
                 payload["input"] = [
                     {**item, "reasoning": {
                         **item["reasoning"], "effort": effort or (
@@ -2227,7 +2247,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             unwritten = json.dumps({
                 "error": {
-                    "message": (lite_quota_error if lite_replay else
+                    "message": (f"selected model {selection.fixed_model} is unavailable while native usage is exhausted; model switching is disabled"
+                                if selection.fixed_model else lite_quota_error if lite_replay else
                                 f"native Codex usage is exhausted and no configured fallback can honor manual effort {selection.user_effort}"
                                 if selection.mode == "manual" else
                                 "native Codex usage is exhausted and no compatible configured fallback is available")
@@ -2236,7 +2257,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             status, out_kind, ctype, quota_hit, unwritten, resets_at = self._forward(
                 payload, out_path, stream_requested, debug, marker, model, signature, effort,
-                exact_route=bool(dry_reason and model not in TIERS))
+                exact_route=bool(selection.fixed_model or (dry_reason and model not in TIERS)))
         retried = False
         fallback = None
         if quota_hit and not dry_reason:
@@ -2260,10 +2281,11 @@ class Handler(BaseHTTPRequestHandler):
                     exact_route=True)
             else:
                 gate = f"codex_dry(no_candidate):{native_model}"
-                if lite_replay or selection.mode == "manual":
+                if lite_replay or selection.mode == "manual" or selection.fixed_model:
                     status, ctype = 503, "application/json"
                     unwritten = json.dumps({"error": {"message":
-                        lite_quota_error if lite_replay else
+                        f"selected model {selection.fixed_model} is unavailable because native usage is exhausted; model switching is disabled"
+                        if selection.fixed_model else lite_quota_error if lite_replay else
                         f"no configured fallback can honor manual effort {selection.user_effort}"
                     }}).encode("utf-8")
         elif status == 200 and not dry_reason and model in TIERS and os.path.exists(DRY_STATE_PATH):
@@ -2330,6 +2352,8 @@ class Handler(BaseHTTPRequestHandler):
             "jev_usage": jev_usage,
             "attempts": self._attempts,
             "decision_source": decision_source,
+            "effort_source": ("off" if gate == "off" else "shadow" if shadow_enabled
+                              else decision_source),
             "planning_review": review,
             "ultra_advice": advisory,
             "lease": decision.get("lease") if decision else None,

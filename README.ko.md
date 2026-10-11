@@ -29,14 +29,16 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
 적용합니다. 사용자가 2026-10-02 새 Desktop 세션에서 전환과 effort 슬라이더의 정상 동작을 확인했습니다. 일반 설치로 활성화되지 않습니다.
 
-## Desktop에서 Auto 또는 Manual 사용하기
+## Desktop에서 라우팅 모드 선택하기
 
-선택형 Desktop 연결은 모델 메뉴에 다음 두 항목을 추가합니다.
+선택형 Desktop 연결은 모델 메뉴에 다음 네 항목을 추가합니다.
 
 | 항목 | 모델 선택 | effort 선택 |
 | --- | --- | --- |
 | Jev Codex Router Auto | Jev가 결정 | Jev가 결정하며 화면 슬라이더 값은 무시 |
 | Jev Codex Router Manual | Jev가 호환 모델을 결정 | 사용자가 선택한 low·medium·high·xhigh·max 유지 |
+| Jev Sol Router | 사용자가 GPT-6.1 Sol 선택 | Jev가 결정하며 화면 슬라이더 값은 무시 |
+| Jev Astra Router | 사용자가 GPT-6 Astra 선택 | Jev가 결정하며 화면 슬라이더 값은 무시 |
 
 실제 설치에 사용하는 고정 checkout에서 `./install.sh --desktop`을 실행하세요.
 작업을 저장하고 Codex를 직접 종료한 다음 생성된 실행기를 여세요.
@@ -208,9 +210,9 @@ bin/jev-codex-router smoke
 
 </details>
 
-## 두 선택 모드
+## 네 선택 모드
 
-격리된 Jev 프로필에 두 경로가 있습니다. `codex -p jev`는 Auto를 선택합니다.
+격리된 Jev 프로필에 네 경로가 있습니다. `codex -p jev`는 Auto를 선택합니다.
 `codex -p jev -m jev/manual -c model_reasoning_effort=high`는 일반 모드의 High를 선택합니다.
 
 | 경로 | 광고된 effort | 동작 |
@@ -225,6 +227,17 @@ bin/jev-codex-router smoke
 두 경로 모두 Plan 품질·검토 지침을 유지하며 Ultra는 제외합니다. Native Desktop 메뉴의
 실제 표시는 미검증이고, 일반 Desktop은 기본 공급자와 catalog를 유지합니다.
 [릴리즈 검증 기록](docs/release/selection-modes.md)을 참고하세요.
+
+Sol(`jev/sol`)과 Astra(`jev/astra`)는 설계·최종·위험 리뷰에서도 선택 모델을
+유지하며 Jev가 effort만 정합니다. Jev 판단·응답 검증 오류나 키·작업 부재 시
+같은 모델/high로 실행합니다. 한도 소진·실행 실패 시 다른 모델로 전환하지 않습니다.
+자동 quota 상태는 요청당 한 번 native에서 재확인하며 수동 dry 표시는 유지합니다.
+Kill switch는 Jev 호출 없이 선택 모델/high, shadow는 판단을 기록하고 선택 모델/high를
+실행합니다. 동시에 켜지면 kill switch가 우선합니다. Ultra 자동 실행·권고는 추가하지 않습니다.
+
+설치기는 기존 provider 등록을 네 개로 이전합니다. 설치 후
+`python3 server/smoke.py --route sol`과 `--route astra`로 실제 모델을 검사합니다.
+[고정 모델 검증 범위](docs/release/fixed-model-routes-2026-10-10.md)를 참고하세요.
 
 ## 이렇게 보입니다
 

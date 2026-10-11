@@ -59,6 +59,7 @@ class SelectionModeHttp(unittest.TestCase):
             rows = json.load(response)["data"]
         self.assertEqual([(row["id"], row["name"]) for row in rows], [
             ("auto", "Jev Codex Router by Auto"), ("manual", "Jev Codex Router"),
+            ("sol", "Jev Sol Router"), ("astra", "Jev Astra Router"),
         ])
 
     def test_auto_sentinel_is_removed(self) -> None:

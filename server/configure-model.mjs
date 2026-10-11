@@ -1,4 +1,4 @@
-// Idempotently declare both Jev routes in the protected user-model
+// Idempotently declare all four Jev routes in the protected user-model
 // overlay. Existing user-curated routes are preserved.
 import {
   readUserModels,
@@ -44,16 +44,35 @@ export const JEV_MANUAL_MODEL = Object.freeze({
   ],
 });
 
+export const JEV_SOL_MODEL = Object.freeze({
+  ...JEV_MANUAL_MODEL,
+  slug: "jev/sol",
+  gatewayModel: "jev-sol",
+  upstreamModel: "sol",
+  compHash: "jev-sol-user-v1",
+  displayName: "Jev Sol Router",
+  description: "GPT-6.1 Sol with Jev-selected reasoning effort; the selected effort is ignored.",
+  priority: 97,
+  defaultEffort: "high",
+});
+
+export const JEV_ASTRA_MODEL = Object.freeze({
+  ...JEV_SOL_MODEL,
+  slug: "jev/astra",
+  gatewayModel: "jev-astra",
+  upstreamModel: "astra",
+  compHash: "jev-astra-user-v1",
+  displayName: "Jev Astra Router",
+  description: "GPT-6 Astra with Jev-selected reasoning effort; the selected effort is ignored.",
+  priority: 98,
+});
+
+const declared = [JEV_MODEL, JEV_MANUAL_MODEL, JEV_SOL_MODEL, JEV_ASTRA_MODEL];
 const existing = readUserModels();
 const preserved = existing.filter((model) =>
-  ![JEV_MODEL.slug, JEV_MANUAL_MODEL.slug].includes(model?.slug));
-const next = [
-  ...preserved,
-  JEV_MODEL,
-  JEV_MANUAL_MODEL,
-];
-writeUserModels(next);
+  !declared.some((entry) => entry.slug === model?.slug));
+writeUserModels([...preserved, ...declared]);
 process.stdout.write(`${JSON.stringify({
-  configured: [JEV_MODEL.slug, JEV_MANUAL_MODEL.slug],
+  configured: declared.map((model) => model.slug),
   preservedModels: preserved.length,
 })}\n`);

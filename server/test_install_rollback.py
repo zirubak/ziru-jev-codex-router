@@ -115,6 +115,27 @@ class RollbackSafetyTests(unittest.TestCase):
             config_rollback.merge(self.fixture.original,
                 current.replace('name = "Jev"', 'name = "User edit"', 1).encode(), self.fixture.state)
 
+    def test_desktop_rollback_recognizes_legacy_and_four_provider_outputs(self) -> None:
+        from test_desktop_provider_registry import provider
+        value = provider()
+        desktop = self.fixture.state / "desktop"
+        desktop.mkdir()
+        (desktop / "manifest.json").write_text(json.dumps({"provider": value,
+            "appExecutable": "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"}))
+        four = desktop_provider_registry.render(value)
+        marker = "[model_providers.jev-router-sol]"
+        two = four[:four.find(marker)] + desktop_provider_registry.END if marker in four else four
+        for generated in (two, four):
+            current = 'personality = "friendly"\n' + generated
+            self.assertEqual(config_rollback.merge(self.fixture.original, current.encode(), self.fixture.state),
+                             b'personality = "friendly"\n')
+        legacy_original = self.fixture.original + two.replace('"/runtime/node"', '"/old/node"').encode()
+        current = b'personality = "friendly"\n' + four.encode() + b'\n[features]\nuser_setting = true\n'
+        expected = legacy_original.replace(b'"pragmatic"', b'"friendly"') + b'\n[features]\nuser_setting = true\n'
+        self.assertEqual(config_rollback.merge(legacy_original, current, self.fixture.state), expected)
+        with self.assertRaisesRegex(ValueError, "configuration.*conflict"):
+            config_rollback.merge(legacy_original, current.replace(b'name = "Jev"', b'name = "User"', 1), self.fixture.state)
+
     def test_rollback_detects_a_second_edit_before_replacement(self) -> None:
         block = '# BEGIN codex-router-managed\nmodel_provider="codex-router"\n# END codex-router-managed\n'
         self.fixture.config.write_text(block + self.fixture.original.decode())

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 const METHODS = new Set(['thread/start', 'thread/resume', 'thread/read', 'thread/settings/update', 'thread/settings/updated', 'turn/start']);
 const EVENTS = new Set(['client_request', 'native_request', 'native_reply', 'native_error', 'native_notification', 'public_notification']);
-const MODELS = new Set(['jev/auto', 'jev/manual', 'gpt-6.1-sol']);
+const MODELS = new Set(['jev/auto', 'jev/manual', 'jev/sol', 'jev/astra', 'gpt-6.1-sol']);
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 const LIMIT = 1024 * 1024;
 const safeValue = (value, allowed) => value == null ? null : allowed.has(value) ? value : 'other';
