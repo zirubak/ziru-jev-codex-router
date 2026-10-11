@@ -5,13 +5,14 @@ import { MemoryRouteState, validateRouteRecord } from './desktop-provider-state.
 
 const JEV_PROVIDER = 'jev-router';
 const CARRIER = 'gpt-6.1-sol';
-const modeOf = (model) => model === 'jev/auto' ? 'auto' : model === 'jev/manual' ? 'manual' : null;
-const providerMode = (provider) => provider === 'jev-router-auto' ? 'auto' : provider === 'jev-router-manual' ? 'manual' : null;
+const MODES = ['auto', 'manual', 'sol', 'astra'];
+const modeOf = (model) => MODES.find((mode) => model === `jev/${mode}`) ?? null;
+const providerMode = (provider) => MODES.find((mode) => provider === `jev-router-${mode}`) ?? null;
 const controlled = (provider) => provider === JEV_PROVIDER || providerMode(provider) != null;
 const providerFor = (model, previous) => modeOf(model) ? `jev-router-${modeOf(model)}` : controlled(previous) ? 'openai' : previous;
 const nativeModel = (model, provider) => providerMode(provider) ? CARRIER : model;
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-const isJev = (model) => model === 'jev/auto' || model === 'jev/manual';
+const isJev = (model) => modeOf(model) != null;
 
 export class JevBridgeError extends Error {
   constructor(code, message, data) {
@@ -26,14 +27,16 @@ function refuse(message) {
 }
 
 function modelEntries() {
-  return ['auto', 'manual'].map((mode) => ({
+  return MODES.map((mode) => ({
     id: `jev/${mode}`, model: `jev/${mode}`,
-    displayName: `Jev Codex Router ${mode === 'auto' ? 'Auto' : 'Manual'}`,
-    description: mode === 'auto'
-      ? 'Jev chooses the model and reasoning effort; the selected effort is ignored.'
-      : 'Jev chooses the model and preserves your selected reasoning effort.',
+    displayName: mode === 'sol' ? 'Jev Sol Router' : mode === 'astra' ? 'Jev Astra Router'
+      : `Jev Codex Router ${mode === 'auto' ? 'Auto' : 'Manual'}`,
+    description: mode === 'manual'
+      ? 'Jev chooses the model and preserves your selected reasoning effort.'
+      : mode === 'auto' ? 'Jev chooses the model and reasoning effort; the selected effort is ignored.'
+        : `${mode === 'sol' ? 'GPT-6.1 Sol' : 'GPT-6 Astra'} with Jev-selected reasoning effort; the selected effort is ignored.`,
     hidden: false, isDefault: false,
-    defaultReasoningEffort: mode === 'auto' ? 'high' : 'medium',
+    defaultReasoningEffort: mode === 'manual' ? 'medium' : 'high',
     supportedReasoningEfforts: EFFORTS.map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
     inputModalities: ['text', 'image'], supportsPersonality: false,
   }));

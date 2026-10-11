@@ -250,7 +250,8 @@ def validate_isolation() -> None:
     config = codex / "config.toml"
     base = tomllib.loads(config.read_text()) if config.exists() else {}
     selected = base.get("model_provider", "openai")
-    if selected in {"codex-router", "codex-router-signed", "jev-router", "jev-router-auto", "jev-router-manual"}:
+    if selected in {"codex-router", "codex-router-signed", "jev-router", "jev-router-auto", "jev-router-manual",
+                    "jev-router-sol", "jev-router-astra"}:
         raise ValueError("router cannot own the default Codex provider")
     if base.get("model", "").startswith("jev/"):
         raise ValueError("Jev cannot be the default Codex model")

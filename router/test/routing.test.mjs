@@ -9431,7 +9431,7 @@ async function jevCollaborationFixture(t, handler, { external = false, cooled = 
   }, ...(external ? [{ id: "external-fixture", displayName: "External fixture",
     baseUrl: `http://127.0.0.1:${gateway.port}/v1`, adapter: "openai-responses",
     headers: {}, allowPrivate: true, enabled: true }] : [])] }));
-  const fixtures = ["auto", "manual"].map((mode) => ({
+  const fixtures = ["auto", "manual", "sol", "astra"].map((mode) => ({
     slug: `jev/${mode}`, gatewayModel: `jev-${mode}`, upstreamModel: mode,
     provider: "jev", listed: true, displayName: "Jev fixture", description: "Jev collaboration fixture.", compHash: `jev-${mode}-test`,
     priority: 95, defaultEffort: "high", reasoningLevels: [{ effort: "high", description: "High" }],
@@ -9463,9 +9463,9 @@ async function jevCollaborationFixture(t, handler, { external = false, cooled = 
     rmSync(directory, { recursive: true, force: true });
   });
   await waitFor(`${routerBase(port)}/models`, router);
-  return { nativeCalls, async request(body) {
-    return fetch(`${routerBase(port)}/responses`, {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer SYNTHETIC_NATIVE_SESSION" },
+  return { nativeCalls, directory, async request(body, { headers = {}, endpoint = "responses" } = {}) {
+    return fetch(`${routerBase(port)}/${endpoint}`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer SYNTHETIC_NATIVE_SESSION", ...headers },
       body: JSON.stringify(body),
     });
   } };
@@ -9483,7 +9483,7 @@ test("Jev collaboration preserves native child inheritance across HTTP", async (
     ]) response.write(`data: ${JSON.stringify(event)}\n\n`);
     response.end();
   });
-  for (const mode of ["auto", "manual"]) {
+  for (const mode of ["auto", "manual", "sol", "astra"]) {
     for (const args of [
       { task_name: "child", message: "Return the marker." },
       { task_name: "child", message: "Return the marker.", fork_turns: "all" },
@@ -9512,7 +9512,7 @@ test("Jev collaboration forwards encrypted handoffs without a plaintext relay", 
     bodies.push(await bodyJson(request));
     json(response, 200, { id: "resp_handoff", output: [{ type: "message", role: "assistant", content: "ok" }] });
   });
-  for (const mode of ["auto", "manual"]) {
+  for (const mode of ["auto", "manual", "sol", "astra"]) {
     const input = [{ type: "agent_message", author: "/root", recipient: "/root/child", content: [
       { type: "input_text", text: "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n" },
       { type: "encrypted_content", encrypted_content: "gAAAAA-native-child-payload=" },
@@ -9530,7 +9530,7 @@ test("Jev collaboration consumes V2 compaction triggers before native summary", 
     bodies.push(await bodyJson(request));
     json(response, 200, { output: [{ type: "message", role: "assistant", content: "Preserve the child task." }] });
   });
-  for (const mode of ["auto", "manual"]) {
+  for (const mode of ["auto", "manual", "sol", "astra"]) {
     const input = [{ type: "agent_message", author: "/root", recipient: "/root/child", content: [
       { type: "input_text", text: "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n" },
       { type: "encrypted_content", encrypted_content: "gAAAAA-native-child-payload=" },
@@ -9571,7 +9571,62 @@ for (const compact of [false, true]) {
   }
 }
 
-for (const [mode, desktop] of [["auto", false], ["manual", false], ["auto", true], ["manual", true]]) {
+for (const mode of ["sol", "astra"]) {
+  for (const cooled of [false, true]) {
+    test(`Jev fixed route rejects quota without model failover mode=${mode} cooled=${cooled}`, async (t) => {
+      const bodies = [];
+      const fixture = await jevCollaborationFixture(t, async (request, response) => {
+        const body = await bodyJson(request);
+        bodies.push(body);
+        if (body.model === `jev-${mode}`) {
+          json(response, 429, { error: { type: "insufficient_quota", message: "You have exceeded your current quota." } });
+        } else json(response, 200, { output: [{ type: "message", role: "assistant", content: "Must not run." }] });
+      }, { external: true, cooled });
+      for (const [endpoint, trigger] of [["responses", false], ["responses/compact", false], ["responses", true]]) {
+        const response = await fixture.request({ model: `jev/${mode}`, stream: false,
+          input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Preserve the task." }] },
+            ...(trigger ? [{ type: "compaction_trigger" }] : [])],
+        }, { endpoint });
+        assert.equal(response.status, 429, await response.text());
+      }
+      writeFileSync(path.join(fixture.directory, "native-aliases.json"), JSON.stringify({
+        version: 1, aliases: { "gpt-6.1-sol": `jev/${mode}` },
+      }));
+      const aliased = await fixture.request({ model: "gpt-6.1-sol", input: "Keep the fixed route." });
+      assert.equal(aliased.status, 429, await aliased.text());
+      assert.deepEqual(bodies.map(body => body.model), Array(4).fill(`jev-${mode}`));
+      assert.equal(fixture.nativeCalls.length, 0);
+    });
+  }
+}
+
+test("exact native execution bypasses native aliases and redirect", async (t) => {
+  const bodies = [];
+  const fixture = await jevCollaborationFixture(t, async (request, response) => {
+    bodies.push(await bodyJson(request));
+    json(response, 200, { output: [] });
+  }, { external: true });
+  writeFileSync(path.join(fixture.directory, "native-redirect.json"), JSON.stringify({
+    version: 1, model: "external-fixture/model",
+  }));
+  let expectedNativeCalls = 0;
+  for (const model of ["gpt-6.1-sol", "gpt-6-astra"]) {
+    for (const aliases of [{ [model]: "external-fixture/model" }, {}]) {
+      writeFileSync(path.join(fixture.directory, "native-aliases.json"), JSON.stringify({ version: 1, aliases }));
+      const response = await fixture.request({ model, input: "Execute this fixed model." }, {
+        headers: { "x-codex-router-exact-route": "1" },
+      });
+      assert.equal(response.status, 200, await response.text());
+      expectedNativeCalls += 1;
+      assert.equal(fixture.nativeCalls.length, expectedNativeCalls,
+        "The native fixture must receive every exact request");
+      assert.equal(fixture.nativeCalls.at(-1).model, model);
+    }
+  }
+  assert.equal(bodies.length, 0, "No aliased or redirected model may execute");
+});
+
+for (const [mode, desktop] of ["auto", "manual", "sol", "astra"].flatMap(mode => [[mode, false], [mode, true]])) {
 test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete canonical replay for its executing model`, async () => {
   const gatewayBodies = [];
   const gatewayHeaders = [];
@@ -9661,6 +9716,8 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
       { type: "message", role: "assistant", content: `Progress ${index}: ${"p".repeat(15_000)}` },
     ]).flat(),
     { type: "message", role: "user", content: "Continue from the existing evidence." },
+    { type: "message", role: "user", content: [{ type: "input_text", text: "Inspect the attached evidence." },
+      { type: "input_image", image_url: "data:image/png;base64,iVBORw0KGgo=" }] },
   ];
   if (desktop) {
     for (const item of input) {
@@ -9720,7 +9777,7 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
       }
       assert.equal(gatewayBodies.length, 1, "invalid markers must never reach a provider");
       for (const endpoint of ["responses", "responses/compact"]) {
-        for (const historical of ["jev/auto", "jev/manual"]) {
+        for (const historical of ["jev/auto", "jev/manual", "jev/sol", "jev/astra"]) {
           const compactInput = endpoint === "responses" ? [...input, { type: "compaction_trigger" }] : input;
           const legacy = await fetch(`${routerBase(routerPort)}/${endpoint}`, {
             method: "POST", headers: { "Content-Type": "application/json",
@@ -9742,7 +9799,7 @@ test(`jev/${mode}${desktop ? " Desktop carrier" : ""} receives the complete cano
         { type: "message", role: "user", content: [{ type: "input_text",
           text: "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary." }] },
       ];
-      for (const historical of ["jev/auto", "jev/manual"]) {
+      for (const historical of ["jev/auto", "jev/manual", "jev/sol", "jev/astra"]) {
         const summary = await fetch(`${routerBase(routerPort)}/responses`, {
           method: "POST", headers: { "Content-Type": "application/json",
             "x-jev-selection-mode": mode, "x-jev-desktop-recovery": "bridge-active" },

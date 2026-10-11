@@ -9,7 +9,8 @@ import tomllib
 
 BEGIN = "# BEGIN jev-desktop-recovery-providers v1\n"
 END = "# END jev-desktop-recovery-providers v1\n"
-NAMES = ("jev-router-auto", "jev-router-manual")
+LEGACY_NAMES = ("jev-router-auto", "jev-router-manual")
+NAMES = (*LEGACY_NAMES, "jev-router-sol", "jev-router-astra")
 HEADER = {"x-jev-desktop-recovery": "required"}
 
 
@@ -70,10 +71,12 @@ def split_owned(text: str) -> tuple[str, str]:
     if (prefix and not prefix.endswith("\n")) or BEGIN in suffix:
         raise ValueError("invalid Desktop recovery ownership boundary")
     document = tomllib.loads(owned)
-    if set(document) != {"model_providers"} or set(document["model_providers"]) != set(NAMES):
+    if (set(document) != {"model_providers"}
+            or set(document["model_providers"]) not in (set(LEGACY_NAMES), set(NAMES))):
         raise ValueError("foreign content inside Desktop recovery block")
-    if names != set(NAMES) or any(
-            parsed["model_providers"][name] != document["model_providers"][name] for name in NAMES):
+    owned_names = set(document["model_providers"])
+    if names != owned_names or any(
+            parsed["model_providers"][name] != document["model_providers"][name] for name in owned_names):
         raise ValueError("Desktop recovery markers do not own the parsed provider definitions")
     for provider in document["model_providers"].values():
         validate_provider(provider, recovery=True)
@@ -84,9 +87,9 @@ def split_owned(text: str) -> tuple[str, str]:
     return prefix, suffix
 
 
-def render(provider: dict[str, object]) -> str:
+def render(provider: dict[str, object], *, legacy: bool = False) -> str:
     rows = [BEGIN.rstrip("\n")]
-    for name in NAMES:
+    for name in LEGACY_NAMES if legacy else NAMES:
         rows.append(f"[model_providers.{name}]")
         for key in ("name", "base_url", "wire_api", "requires_openai_auth", "supports_standalone_web_search"):
             if key in provider:

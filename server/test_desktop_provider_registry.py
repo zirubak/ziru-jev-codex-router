@@ -29,7 +29,7 @@ class RegistryTests(unittest.TestCase):
         data = tomllib.loads(first.decode())
         self.assertEqual(data["model"], "gpt-6.1-sol")
         self.assertNotIn("model_provider", data)
-        self.assertEqual(set(data["model_providers"]), {"jev-router-auto", "jev-router-manual"})
+        self.assertEqual(set(data["model_providers"]), {"jev-router-auto", "jev-router-manual", "jev-router-sol", "jev-router-astra"})
         for value in data["model_providers"].values():
             self.assertEqual(value["http_headers"], {"x-jev-desktop-recovery": "required"})
         registry.install(self.path, provider())
@@ -90,4 +90,33 @@ class RegistryTests(unittest.TestCase):
         self.path.write_bytes(self.path.read_bytes() + b'\n[projects."/mine"]\ntrust_level="trusted"\n')
         before = self.path.read_bytes()
         registry.install(self.path, provider())
+        self.assertEqual(before, self.path.read_bytes())
+
+    def test_old_two_provider_registry_migrates_without_adopting_foreign_content(self) -> None:
+        generated = registry.render(provider())
+        legacy = generated[:generated.find("[model_providers.jev-router-sol]")] + registry.END if "[model_providers.jev-router-sol]" in generated else generated
+        suffix = '\n[projects."/mine"]\ntrust_level = "trusted"\n'
+        original = self.original.decode() + legacy + suffix
+        self.path.write_text(original)
+        registry.install(self.path, provider("/new/node"))
+        updated = self.path.read_text()
+        self.assertTrue(updated.startswith(self.original.decode()))
+        self.assertTrue(updated.endswith(suffix))
+        self.assertEqual(set(tomllib.loads(updated)["model_providers"]),
+                         {"jev-router-auto", "jev-router-manual", "jev-router-sol", "jev-router-astra"})
+        for foreign in ('[model_providers.jev-router-sol]\nname="foreign"\n',
+                        '["model_providers"."jev-router-astra"]\nname="foreign"\n'):
+            self.path.write_text(original + foreign)
+            before = self.path.read_bytes()
+            with self.assertRaises(ValueError):
+                registry.install(self.path, provider())
+            self.assertEqual(before, self.path.read_bytes())
+
+    def test_partial_four_provider_registry_is_rejected_without_write(self) -> None:
+        generated = registry.render(provider())
+        partial = generated[:generated.find("[model_providers.jev-router-astra]")] + registry.END
+        self.path.write_text(self.original.decode() + partial)
+        before = self.path.read_bytes()
+        with self.assertRaises(ValueError):
+            registry.install(self.path, provider())
         self.assertEqual(before, self.path.read_bytes())

@@ -110,7 +110,7 @@ if '--take-over-managed-router' not in sys.argv:
  code="import {genericProviderConfigured} from '"+source+"/generic-provider-readiness.mjs';" \
       +"import {selectedConfiguredListedModels} from '"+source+"/provider-selection.mjs';" \
       +"if(!genericProviderConfigured('jev'))throw Error('FAIL Enabled providers: none');" \
-      +"if(!['jev/auto','jev/manual'].every(s=>selectedConfiguredListedModels().some(m=>m.slug===s)))throw Error('FAIL Merged catalog');"
+      +"if(!['jev/auto','jev/manual','jev/sol','jev/astra'].every(s=>selectedConfiguredListedModels().some(m=>m.slug===s)))throw Error('FAIL Merged catalog');"
  subprocess.run([os.environ['FIXTURE_NODE'],'--input-type=module','-e',code],check=True)
  if not (state/'fixture-jev-auth').exists():
   raise RuntimeError('Jev authentication must be configured before embedded validation')
@@ -313,13 +313,13 @@ if sys.argv[1:3]==['service','restart']:
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.config.read_bytes(), self.original)
 
-    def test_full_install_reloads_router_after_publishing_both_routes(self):
+    def test_full_install_reloads_router_after_publishing_all_four_routes(self):
         result = self.run_install()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         loaded = json.loads((self.state / "loaded-routes.json").read_text())
-        self.assertEqual(loaded, ["jev/auto", "jev/manual"])
+        self.assertEqual(loaded, ["jev/auto", "jev/manual", "jev/sol", "jev/astra"])
 
-    def test_two_mode_reinstall_preserves_other_models_and_picker_entries(self):
+    def test_four_mode_reinstall_preserves_other_models_and_picker_entries(self):
         original = {"version": 1, "models": [{"slug": "fixture/other", "provider": "fixture"}]}
         (self.state / "user-models.json").write_text(json.dumps(original))
         (self.state / "model-picker.json").write_text(json.dumps({
@@ -330,9 +330,24 @@ if sys.argv[1:3]==['service','restart']:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         rows = json.loads((self.state / "user-models.json").read_text())["models"]
         self.assertEqual([row["slug"] for row in rows],
-                         ["fixture/other", "jev/auto", "jev/manual"])
+                         ["fixture/other", "jev/auto", "jev/manual", "jev/sol", "jev/astra"])
         visible = json.loads((self.state / "model-picker.json").read_text())["visible"]
-        self.assertEqual(set(visible), {"fixture/other", "jev/auto", "jev/manual"})
+        self.assertEqual(set(visible), {"fixture/other", "jev/auto", "jev/manual", "jev/sol", "jev/astra"})
+
+    def test_fixed_catalog_routes_use_exact_identities_and_bounded_placeholder_efforts(self):
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = {row["slug"]: row for row in json.loads((self.state / "user-models.json").read_text())["models"]}
+        for mode, label in (("sol", "Sol"), ("astra", "Astra")):
+            with self.subTest(mode=mode):
+                row = rows[f"jev/{mode}"]
+                self.assertEqual(row["displayName"], f"Jev {label} Router")
+                self.assertEqual(row["gatewayModel"], f"jev-{mode}")
+                self.assertEqual(row["upstreamModel"], mode)
+                self.assertEqual(row["defaultEffort"], "high")
+                self.assertEqual([item["effort"] for item in row["reasoningLevels"]],
+                                 ["low", "medium", "high", "xhigh", "max"])
+                self.assertIn("selected effort is ignored", row["description"])
 
     def test_late_failure_restores_two_mode_catalog_and_picker_snapshot(self):
         saved = {
@@ -369,6 +384,8 @@ if sys.argv[1:3]==['service','restart']:
         for text in ['model = "jev/auto"\n',
                      'model_provider = "jev-router-auto"\n',
                      'model_provider = "jev-router-manual"\n',
+                     'model_provider = "jev-router-sol"\n',
+                     'model_provider = "jev-router-astra"\n',
                      '[model_providers.openai]\nbase_url = "http://localhost:4202/v1"\n']:
             with self.subTest(config=text):
                 self.config.write_text(text)

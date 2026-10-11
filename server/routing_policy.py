@@ -3,7 +3,7 @@ import math
 from routing_reference import REFERENCE_SHA256, REFERENCE_VERSION
 from ultra_advisory import ULTRA_PROFILES, ULTRA_QUESTION
 
-POLICY_VERSION = "split-v18-selection-modes"
+POLICY_VERSION = "split-v21-fixed-model-effort"
 # Historical identifiers remain for interpreting old logs and rate-card reports.
 LUNA, SOL, ASTRA = "gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"
 LUNA_6 = "gpt-6-luna"

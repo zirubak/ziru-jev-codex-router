@@ -228,6 +228,11 @@ def merge(original: bytes | None, current: bytes | None, state: Path,
     before, live = (original or b"").decode(), (current or b"").decode()
     baseline, present = blocks(before), blocks(live)
     expected = desktop_expected(state) if any(name in present for name in DESKTOP_BLOCKS) else {}
+    legacy_registry = None
+    if expected.get(DESKTOP_BLOCKS[0]):
+        from desktop_provider_registry import render
+        provider = tomllib.loads(expected[DESKTOP_BLOCKS[0]])["model_providers"]["jev-router-auto"]
+        legacy_registry = render(provider, legacy=True)
     # Validate every change before constructing any replacement.
     for name in baseline.keys() | present.keys():
         old, new = baseline.get(name), present.get(name)
@@ -239,7 +244,8 @@ def merge(original: bytes | None, current: bytes | None, state: Path,
             if new:
                 raise ValueError("configuration conflict: managed router block changed concurrently")
         else:
-            if new and new.text != expected.get(name):
+            if (new and new.text != expected.get(name)
+                    and not (name == DESKTOP_BLOCKS[0] and new.text == legacy_registry)):
                 raise ValueError("configuration conflict: Desktop block differs from installer output")
             if name == DESKTOP_BLOCKS[1]:
                 if old:

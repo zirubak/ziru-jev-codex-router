@@ -115,3 +115,11 @@ test('a failing diagnostic sink cannot interrupt native requests or notification
   assert.deepEqual((await done).result, { thread: { id: 'fixture' } });
   assert.equal(notification.params.threadSettings.collaborationMode.mode, 'plan');
 });
+
+test('Plan diagnostics recognize fixed Sol and Astra route metadata', t => {
+  const { directory, record } = fixture(t);
+  writeFileSync(join(directory, 'plan-diagnostics.enabled'), '', { mode: 0o600 });
+  for (const mode of ['sol', 'astra']) record('client_request', 'thread/settings/update', { model: `jev/${mode}`, effort: 'high' });
+  const rows = readFileSync(join(directory, 'plan-diagnostics.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(rows.map(row => row.model), ['jev/sol', 'jev/astra']);
+});

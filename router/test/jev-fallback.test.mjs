@@ -124,13 +124,14 @@ test("an explicit chain cannot reintroduce jev recursion or an unqualified local
   );
 });
 
-test("both Jev slugs and all Jev provider aliases are excluded from fallback", () => {
+test("all Jev slugs and provider aliases are excluded from fallback", () => {
   const manual = { ...cloud, slug: "jev/manual", provider: "deepseek" };
+  const fixed = ["sol", "astra"].map(mode => ({ ...cloud, slug: `jev/${mode}`, provider: "deepseek" }));
   const alias = { ...cloud, slug: "custom/jev", provider: "jev" };
   assert.deepEqual(
     candidates({
-      models: [jev, manual, alias, cloud],
-      settings: { enabled: true, chain: [manual.slug, alias.slug, cloud.slug] },
+      models: [jev, manual, ...fixed, alias, cloud],
+      settings: { enabled: true, chain: [manual.slug, ...fixed.map(model => model.slug), alias.slug, cloud.slug] },
     }).map((entry) => entry.slug),
     [cloud.slug],
   );

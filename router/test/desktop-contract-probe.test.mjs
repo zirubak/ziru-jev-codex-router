@@ -257,7 +257,7 @@ const bridgedHeaders = { 'content-type': 'application/json', 'x-jev-selection-mo
 async function responder(t, state = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'jev-responder-test-'));
   const errors = [];
-  const context = { directory, config: '', httpRequests: 0, expected: null, recovery: null,
+  const context = { directory, config: '', httpRequests: 0, expected: null, recoveries: new Map(),
     recoveryDeniedRequests: 0, recoveryCompactRequests: 0, ...state };
   context.fail = (error) => { errors.push(error); context.error ??= error; };
   await startQualificationResponderForTests(context);
@@ -349,16 +349,16 @@ test('responder hard-stops a malformed body whose expected turn changed before i
 });
 
 test('responder hard-stops a malformed body whose recovery turn changed before it arrived', async (t) => {
-  const recoveryHeaders = { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required' };
-  const { context, errors, open, received } = await responder(t, { recovery: { threadId: 'thread', mode: 'auto', requests: 0 } });
+  const recoveryHeaders = { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required', 'thread-id': 'thread' };
+  const { context, errors, open, received } = await responder(t, { recoveries: new Map([['auto', { threadId: 'thread', mode: 'auto', requests: 0 }]]) });
   const stale = open('/v1/responses', recoveryHeaders);
   await received(1);
-  context.recovery = { threadId: 'thread-2', mode: 'auto', requests: 0 };
+  context.recoveries.set('auto', { threadId: 'thread-2', mode: 'auto', requests: 0 });
   stale.pending.end('{not json');
   const result = await stale.response;
   assert.notEqual(result.status, 200);
   assert.equal(context.recoveryDeniedRequests, 0);
-  assert.equal(context.recovery.requests, 0);
+  assert.equal(context.recoveries.get('auto').requests, 0);
   await assertHardStop(errors[0], /outside the bare native recovery turn/);
 });
 
@@ -386,8 +386,8 @@ test('responder treats automatic compaction during an expected turn as a safety 
 });
 
 test('responder keeps the intentional recovery refusal for bare native compaction', async (t) => {
-  const { context, errors, open } = await responder(t, { recovery: { threadId: 'thread', mode: 'auto', requests: 0 } });
-  const compact = open('/v1/responses/compact', { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required' });
+  const { context, errors, open } = await responder(t, { recoveries: new Map([['auto', { threadId: 'thread', mode: 'auto', requests: 0 }]]) });
+  const compact = open('/v1/responses/compact', { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required', 'thread-id': 'thread' });
   compact.pending.end(turnBody);
   const result = await compact.response;
   assert.equal(result.status, 400);
@@ -404,6 +404,10 @@ test('real native qualification covers synthetic routing, settings, context pres
   const evidence = await probeDesktopContract(process.env.JEV_DESKTOP_NATIVE_BINARY);
   assert.match(evidence.nativeVersion, /^codex-cli /);
   assert.ok(evidence.checks.includes('manual-efforts'));
+  assert.ok(evidence.checks.includes('sol-efforts'));
+  assert.ok(evidence.checks.includes('astra-efforts'));
+  assert.ok(evidence.checks.includes('fixed-restart-resume'));
+  assert.ok(evidence.checks.includes('fixed-official-provider-restored'));
   assert.ok(evidence.checks.includes('nested-settings'));
   assert.ok(evidence.checks.includes('restart-resume'));
   assert.ok(evidence.checks.includes('bare-native-recovery-resume'));
@@ -411,8 +415,79 @@ test('real native qualification covers synthetic routing, settings, context pres
   assert.ok(evidence.checks.includes('recovery-registry-native-deep-merge'));
   assert.ok(evidence.checks.includes('official-provider-restored'));
   assert.ok(evidence.minimumContextWindow >= 740000);
-  assert.ok(evidence.httpRequests >= 8);
+  assert.ok(evidence.httpRequests >= 20);
   assert.equal(evidence.compactions, 0);
-  assert.ok(evidence.recoveryDeniedRequests >= 2);
+  assert.ok(evidence.recoveryDeniedRequests >= 4);
   assert.equal(evidence.recoveryModelOutputs, 0);
+});
+
+test('qualification recovery registry includes every Jev route', async t => {
+  const { context } = await responder(t, { expected: expectedTurn() });
+  for (const mode of ['auto', 'manual', 'sol', 'astra']) {
+    assert.ok(context.config.includes(`[model_providers.jev-router-${mode}]`));
+    assert.ok(context.config.includes(`"x-jev-selection-mode" = "${mode}"`));
+  }
+});
+
+for (const mode of ['sol', 'astra']) {
+  test(`qualification verifies fixed ${mode} bridge HTTP and bare-native refusal`, async t => {
+    const { context, errors, open } = await responder(t, { expected: { ...expectedTurn(), mode } });
+    const bridged = open('/v1/responses', { ...bridgedHeaders, 'x-jev-selection-mode': mode });
+    bridged.pending.end(turnBody);
+    assert.equal((await bridged.response).status, 200);
+    assert.equal(context.httpRequests, 1);
+    context.expected = null;
+    context.recoveries.set(mode, { threadId: 'fixed-thread', mode, requests: 0 });
+    const bare = open('/v1/responses', { ...bridgedHeaders, 'x-jev-selection-mode': mode, 'x-jev-desktop-recovery': 'required', 'thread-id': 'fixed-thread' });
+    bare.pending.end(turnBody);
+    const result = await bare.response;
+    assert.equal(result.status, 400);
+    assert.equal(JSON.parse(result.body).error.code, 'jev_desktop_recovery_required');
+    assert.equal(context.recoveryDeniedRequests, 1);
+    assert.equal(context.httpRequests, 1);
+    assert.deepEqual(errors, []);
+  });
+}
+
+test('parallel bare-native recovery turns retain per-mode thread ownership and product refusal', async t => {
+  const recoveries = new Map(['auto', 'manual', 'sol', 'astra'].map(mode => [mode, { threadId: `thread-${mode}`, mode, requests: 0 }]));
+  const { context, errors, open, received } = await responder(t, { recoveries });
+  const requests = [...recoveries.values()].map(recovery => open('/v1/responses', {
+    ...bridgedHeaders, 'x-jev-desktop-recovery': 'required', 'x-jev-selection-mode': recovery.mode, 'thread-id': recovery.threadId,
+  }));
+  await received(4);
+  for (const { pending } of requests) pending.end(turnBody);
+  for (const { response } of requests) {
+    const result = await response;
+    assert.equal(result.status, 400);
+    assert.equal(JSON.parse(result.body).error.code, 'jev_desktop_recovery_required');
+  }
+  assert.deepEqual([...recoveries.values()].map(record => record.requests), [1, 1, 1, 1]);
+  assert.equal(context.httpRequests, 0);
+  assert.equal(context.recoveryDeniedRequests, 4);
+  assert.deepEqual(errors, []);
+});
+
+test('parallel recovery refuses a mode header belonging to another thread', async t => {
+  const recoveries = new Map([['sol', { threadId: 'thread-sol', mode: 'sol', requests: 0 }]]);
+  const { context, errors, open } = await responder(t, { recoveries });
+  const mixed = open('/v1/responses', { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required', 'x-jev-selection-mode': 'sol', 'thread-id': 'thread-astra' });
+  mixed.pending.end(turnBody);
+  const result = await mixed.response;
+  assert.notEqual(result.status, 200);
+  assert.equal(context.recoveryDeniedRequests, 0);
+  await assertHardStop(errors[0], /persisted recovery guard/);
+});
+
+test('parallel recovery hard-stops a captured body after a prior safety failure', async t => {
+  const recovery = { threadId: 'thread-sol', mode: 'sol', requests: 0 };
+  const recoveries = new Map([['sol', recovery]]);
+  const { context, errors, open, received } = await responder(t, { recoveries });
+  const stale = open('/v1/responses', { ...bridgedHeaders, 'x-jev-desktop-recovery': 'required', 'x-jev-selection-mode': 'sol', 'thread-id': recovery.threadId });
+  await received(1);
+  context.error = new Error('earlier qualification safety failure');
+  stale.pending.end(turnBody);
+  await stale.response;
+  assert.equal(context.recoveryDeniedRequests, 0);
+  await assertHardStop(errors[0], /outside the bare native recovery turn/);
 });

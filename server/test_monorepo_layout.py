@@ -16,7 +16,9 @@ class EmbeddedRouterLayout(unittest.TestCase):
         self.assertTrue((ROOT / "router" / "bin" / "codex-router").exists())
 
         router_source = (ROOT / "router" / "src" / "router.mjs").read_text()
-        self.assertIn('route?.slug === "jev/auto"', router_source)
+        self.assertRegex(router_source, r'function requiresCanonicalReplay\(route\) \{\s*'
+                         r'return \["jev/auto", "jev/manual", "jev/sol", "jev/astra"\]'
+                         r'\.includes\(route\?\.slug\);')
         self.assertIn("CODEX_ROUTER_STREAM_STALL_MS", router_source)
         self.assertIn("router_reasoning_effort", router_source)
 

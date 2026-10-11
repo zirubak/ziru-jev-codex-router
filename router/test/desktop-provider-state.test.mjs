@@ -68,7 +68,7 @@ test('official effort uses native non-empty string contract while Jev stays boun
   for (const effort of ['', 42, {}, ['ultra'], 'x'.repeat(4096)]) {
     assert.throws(() => state.write('invalid', { ...route, mode: 'official', model: 'gpt-6.1-sol', effort }, null), /record/);
   }
-  for (const mode of ['auto', 'manual']) {
+  for (const mode of ['auto', 'manual', 'sol', 'astra']) {
     assert.throws(() => state.write(mode, { ...route, mode, model: `jev/${mode}`, effort: 'ultra' }, null), /record/);
   }
 });
@@ -84,3 +84,16 @@ test('read-only state opens existing records and never creates a missing directo
   assert.deepEqual(new PrivateRouteState(directory, { create: false }).read('thread-1'), saved);
   assert.deepEqual(readFileSync(state.path('thread-1')), original);
 });
+
+for (const mode of ['sol', 'astra']) {
+  test(`fixed ${mode} route persists across reopen and keeps bounded efforts`, (t) => {
+    const { directory } = fixture(t);
+    const state = new PrivateRouteState(directory);
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
+      const id = `${mode}-${effort}`;
+      const record = state.write(id, { ...route, mode, model: `jev/${mode}`, effort }, null);
+      assert.deepEqual(new PrivateRouteState(directory).read(id), record);
+    }
+    assert.throws(() => state.write('mismatch', { ...route, mode, model: 'jev/auto' }, null), /record/);
+  });
+}

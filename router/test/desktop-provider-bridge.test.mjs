@@ -40,12 +40,13 @@ function fixture() {
   return { bridge, calls, thread, reject() { rejectRebind = true; } };
 }
 
-test('native model list is preserved and two Jev entries have exact effort contracts', async () => {
+test('native model list is preserved and four Jev entries have exact effort contracts', async () => {
   const { bridge } = fixture();
   const result = await bridge.handle('model/list', {});
   assert.deepEqual(result.data[0], { id: 'native', model: 'gpt-6.1-sol', unknownNativeField: true });
   assert.deepEqual(result.data.slice(1).map((m) => [m.model, m.supportedReasoningEfforts.map((v) => v.reasoningEffort)]), [
     ['jev/auto', ['low', 'medium', 'high', 'xhigh', 'max']], ['jev/manual', ['low', 'medium', 'high', 'xhigh', 'max']],
+    ['jev/sol', ['low', 'medium', 'high', 'xhigh', 'max']], ['jev/astra', ['low', 'medium', 'high', 'xhigh', 'max']],
   ]);
 });
 
@@ -311,13 +312,13 @@ test('native app-server preserves official config and confirms round-trip provid
     await client.call('initialize', { clientInfo: { name: 'jev_bridge_test', version: '1' }, capabilities: { experimentalApi: true } });
     client.notify('initialized');
     const models = await client.call('model/list');
-    assert.deepEqual(models.data.filter((m) => m.model.startsWith('jev/')).map((m) => m.model), ['jev/auto', 'jev/manual']);
+    assert.deepEqual(models.data.filter((m) => m.model.startsWith('jev/')).map((m) => m.model), ['jev/auto', 'jev/manual', 'jev/sol', 'jev/astra']);
     const started = await client.call('thread/start', { model: 'gpt-6.1-sol', cwd: directory, approvalPolicy: 'never', permissions: ':read-only' });
     assert.equal(started.modelProvider, 'openai');
     assert.equal(started.sandbox.type, 'readOnly', JSON.stringify({ sandbox: started.sandbox, profile: started.activePermissionProfile }));
     const threadId = started.thread.id;
     await client.call('thread/inject_items', { threadId, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Synthetic provider routing fixture. No inference requested.' }] }] });
-    for (const [model, effort, expected] of [['jev/auto', 'high', 'jev-router-auto'], ['jev/manual', 'max', 'jev-router-manual'], ['gpt-6.1-sol', 'high', 'openai']]) {
+    for (const [model, effort, expected] of [['jev/auto', 'high', 'jev-router-auto'], ['jev/manual', 'max', 'jev-router-manual'], ['jev/sol', 'high', 'jev-router-sol'], ['jev/astra', 'max', 'jev-router-astra'], ['gpt-6.1-sol', 'high', 'openai']]) {
       await client.call('thread/settings/update', { threadId, model, effort });
       const resumed = await client.call('thread/resume', { threadId });
       assert.equal(resumed.model, model);
@@ -558,7 +559,7 @@ test('collaboration settings and notifications map only the selected Jev thread'
 test('confirmed modes and official return survive a new adapter instance', async () => {
   const { bridge, thread } = fixture();
   let current = bridge;
-  for (const model of ['jev/auto', 'jev/manual', 'gpt-6.1-sol']) {
+  for (const model of ['jev/auto', 'jev/manual', 'jev/sol', 'jev/astra', 'gpt-6.1-sol']) {
     await current.handle('thread/settings/update', { threadId: 'fixture', model, effort: 'high' });
     current = new DesktopProviderBridge({ request: bridge.request, provider, state: bridge.state });
     const result = await current.handle('thread/resume', { threadId: 'fixture' });
@@ -679,7 +680,7 @@ test('cached Manual effort cannot override a separately confirmed private effort
 });
 
 test('cold confirmed routes preserve implicit effort and allow explicit settings updates', { skip: process.platform === 'win32' }, async (t) => {
-  for (const [model, effort, updated] of [['jev/manual', 'max', 'low'], ['jev/auto', 'high', 'medium'], ['gpt-6.1-sol', 'ultra', 'high']]) {
+  for (const [model, effort, updated] of [['jev/manual', 'max', 'low'], ['jev/auto', 'high', 'medium'], ['jev/sol', 'high', 'low'], ['jev/astra', 'max', 'xhigh'], ['gpt-6.1-sol', 'ultra', 'high']]) {
     await t.test(model, async (t) => {
       const { bridge, calls, thread } = await privateFixture(t);
       await bridge.handle('thread/settings/update', { threadId: 'fixture', model, effort });
@@ -743,3 +744,31 @@ test('private storage failures still block retries and dispatch no settings RPC'
   await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', effort: 'high' }), /unconfirmed/);
   assert.equal(calls.some((c) => c.method === 'thread/settings/update'), false);
 });
+
+for (const mode of ['sol', 'astra']) {
+  test(`fixed ${mode} lifecycle keeps carrier metadata and restores official provider`, async () => {
+    const { bridge, calls, thread } = fixture();
+    const result = await bridge.handle('thread/start', { model: `jev/${mode}` });
+    assert.equal(result.model, `jev/${mode}`);
+    assert.equal(result.modelProvider, `jev-router-${mode}`);
+    assert.equal(thread.model, 'gpt-6.1-sol');
+    assert.equal(thread.reasoningEffort, 'high');
+    const row = (await bridge.handle('model/list', {})).data.find((entry) => entry.model === `jev/${mode}`);
+    assert.equal(row.displayName, `Jev ${mode === 'sol' ? 'Sol' : 'Astra'} Router`);
+    assert.equal(row.defaultReasoningEffort, 'high');
+    assert.match(row.description, /selected effort is ignored/);
+    const start = calls.find((call) => call.method === 'thread/start');
+    assert.equal(start.params.config.model_providers[`jev-router-${mode}`].http_headers['x-jev-selection-mode'], mode);
+    await bridge.handle('thread/settings/update', { threadId: 'fixture', model: `jev/${mode}`, effort: 'max' });
+    await bridge.handle('turn/start', { threadId: 'fixture', collaborationMode: { mode: 'plan', settings: { model: `jev/${mode}`, reasoning_effort: 'max' } }, input: [] });
+    assert.equal(calls.at(-1).params.collaborationMode.settings.model, 'gpt-6.1-sol');
+    const notification = bridge.notification({ method: 'thread/settings/updated', params: { threadId: 'fixture', threadSettings: { model: 'gpt-6.1-sol', collaborationMode: { mode: 'plan', settings: { model: 'gpt-6.1-sol', reasoning_effort: 'max' } } } } });
+    assert.equal(notification.params.threadSettings.model, `jev/${mode}`);
+    assert.equal(notification.params.threadSettings.collaborationMode.settings.model, `jev/${mode}`);
+    const resumed = await bridge.handle('thread/resume', { threadId: 'fixture' });
+    assert.equal(resumed.model, `jev/${mode}`);
+    await assert.rejects(bridge.handle('thread/settings/update', { threadId: 'fixture', model: `jev/${mode}`, effort: 'ultra' }), /unsupported reasoning effort/);
+    await bridge.handle('thread/settings/update', { threadId: 'fixture', model: 'gpt-6.1-sol', effort: 'high' });
+    assert.equal(thread.modelProvider, 'openai');
+  });
+}

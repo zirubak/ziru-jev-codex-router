@@ -33,7 +33,7 @@ An optional, contract-checked [Desktop bridge candidate](docs/release/native-des
 keeps the existing effort menu and separates Auto/Manual by name. The owner confirmed Auto/Manual switching and the effort slider in a fresh
 Desktop session on 2026-10-02. Ordinary installation does not enable this bridge.
 
-## Use Auto or Manual in Desktop
+## Choose a routing mode in Desktop
 
 The optional Desktop integration adds these entries to the model menu:
 
@@ -41,6 +41,8 @@ The optional Desktop integration adds these entries to the model menu:
 | --- | --- | --- |
 | Jev Codex Router Auto | Jev chooses | Jev chooses; the displayed slider is ignored |
 | Jev Codex Router Manual | Jev chooses a compatible model | Your selected low, medium, high, xhigh or max |
+| Jev Sol Router | You select GPT-6.1 Sol | Jev chooses; the displayed slider is ignored |
+| Jev Astra Router | You select GPT-6 Astra | Jev chooses; the displayed slider is ignored |
 
 ### The one thing to remember
 
@@ -315,13 +317,15 @@ Run `codex -p jev` to select **Jev Codex Router** explicitly. To prepare depende
 
 ## Selection modes
 
-The explicit Jev profile contains two routes. `codex -p jev` selects Auto;
+The explicit Jev profile contains four routes. `codex -p jev` selects Auto;
 `codex -p jev -m jev/manual -c model_reasoning_effort=high` selects Manual at High.
 
 | Route | Advertised effort | Responsibility |
 | --- | --- | --- |
 | Jev Codex Router by Auto (`jev/auto`) | Auto only | Jev chooses the model and effort |
 | Jev Codex Router (`jev/manual`) | low (Light), medium, high, xhigh, max | Jev chooses the model; code keeps your effort |
+| Jev Sol Router (`jev/sol`) | low, medium, high, xhigh, max (ignored) | User fixes GPT-6.1 Sol; Jev chooses effort |
+| Jev Astra Router (`jev/astra`) | low, medium, high, xhigh, max (ignored) | User fixes GPT-6 Astra; Jev chooses effort |
 
 Manual defaults to medium when effort is absent. Invalid effort fails before
 inference; cache changes, retries and fallback preserve the exact choice. Auto
@@ -331,6 +335,21 @@ quota fallback supports the selected effort, Manual returns an explicit error.
 Both routes retain Plan quality and review guidance. Ultra remains excluded.
 Native Desktop menu rendering has not been verified; ordinary Desktop remains
 on its built-in provider and catalog. See [release evidence](docs/release/selection-modes.md).
+
+Sol and Astra stay on your selected model even for architecture and final/risk
+reviews. The Desktop's numeric effort is transport metadata and is ignored on
+these routes; the response tag and local decision log show the actual effort.
+Jev/schema/key/task failures use the same selected model/high. Native errors
+stop without switching models. Automatic quota state is rechecked once per
+fixed-route request; manual dry state remains authoritative. Kill skips Jev and
+uses selected-model/high; shadow records the judgment but also executes
+selected-model/high. Kill wins when both are enabled. All routes use standard
+speed, and fixed routes do not add Ultra advice.
+
+The installer upgrades the owned Desktop provider block from two entries to
+four while preserving official defaults. Verify the fixed routes with
+`python3 server/smoke.py --route sol` and `python3 server/smoke.py --route astra`.
+See [fixed-model verification](docs/release/fixed-model-routes-2026-10-10.md).
 
 ## What you'll see
 
@@ -380,7 +399,7 @@ Labels appear with the first text of each assistant message; they are not shown 
 | GPT-6.1 Sol | General implementation and debugging | low · medium · high · xhigh · max |
 | GPT-6 Astra | Architecture, independent final review and risk-focused review | low · medium · high · xhigh · max |
 
-The current policy requires Astra for the review and architecture categories above; effort is chosen separately. Within a clean continuation, a decision can be reused within a bounded continuation. New user requests, errors, compaction and changes in the tool chain trigger reassessment.
+The Auto/Manual policy requires Astra for the review and architecture categories above; effort is chosen separately. Within a clean continuation, a decision can be reused within a bounded continuation. New user requests, errors, compaction and changes in the tool chain trigger reassessment.
 
 In native Plan mode, Jev prioritizes an implementation-ready plan and chooses
 capability, reasoning depth and a review recommendation for the remaining

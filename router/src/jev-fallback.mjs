@@ -9,7 +9,7 @@ import { selectedConfiguredListedModels } from "./provider-selection.mjs";
 import { cooldownScope } from "./provider-cooldown.mjs";
 
 const JEV_PROVIDER = "jev";
-const JEV_ROUTES = new Set(["jev/auto", "jev/manual"]);
+const JEV_ROUTES = new Set(["jev/auto", "jev/manual", "jev/sol", "jev/astra"]);
 
 function preservesManualEffort(model, provider, effort) {
   const levels = model.reasoningLevels || [];

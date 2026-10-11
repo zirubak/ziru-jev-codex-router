@@ -1058,7 +1058,7 @@ function routedSearchCompatibility(payload, route) {
 // canonical replay: aging or windowing it here would make the Jev projection
 // accidentally become the only context available to the executing model.
 function requiresCanonicalReplay(route) {
-  return route?.slug === "jev/auto" || route?.slug === "jev/manual";
+  return ["jev/auto", "jev/manual", "jev/sol", "jev/astra"].includes(route?.slug);
 }
 
 function inputHasWebSearchHistory(input) {
@@ -4205,12 +4205,12 @@ async function handleResponses(request, response, requestUrl) {
       // provider marker still owns the selected mode, including mode switches.
       const historicalJevCompaction = (compactV1 || compactV2 || isNativeCheckpointSummary(payload))
         && request.headers["x-jev-desktop-recovery"] === "bridge-active"
-        && ["jev/auto", "jev/manual"].includes(payload?.model);
-      if (!["auto", "manual"].includes(jevMode)
+        && ["jev/auto", "jev/manual", "jev/sol", "jev/astra"].includes(payload?.model);
+      if (!["auto", "manual", "sol", "astra"].includes(jevMode)
           || (payload?.model !== "gpt-6.1-sol" && !historicalJevCompaction)) {
         writeJson(response, 400, { error: {
           type: "invalid_request_error", code: "invalid_jev_selection",
-          message: "Jev selection requires one auto/manual mode and its supported native model.",
+          message: "Jev selection requires one auto/manual/sol/astra mode and its supported native model.",
         } });
         return;
       }
@@ -4234,9 +4234,12 @@ async function handleResponses(request, response, requestUrl) {
     }
     controller.signal.throwIfAborted();
     requestedModel = typeof payload.model === "string" ? payload.model : "";
+    // Fixed Jev routes own the model choice even when the caller supplies no
+    // exact-route marker. The internal native replay supplies that marker to
+    // bypass aliases and redirects as well as all model failover paths.
     let registeredRoute =
       MODEL_BY_SLUG.get(requestedModel) ??
-      MODEL_BY_SLUG.get(readNativeAliases()[requestedModel]);
+      (exactRouteProbe ? undefined : MODEL_BY_SLUG.get(readNativeAliases()[requestedModel]));
     // A provider-prefixed slug with no route is a routed model this process
     // never loaded -- added to user-models.json after startup, or skipped at
     // load as invalid -- and never native GPT traffic: no native slug contains
@@ -4264,7 +4267,7 @@ async function handleResponses(request, response, requestUrl) {
     // them to the configured routed model; a target that is unknown or whose
     // provider is hidden leaves the turn native rather than trading a quota
     // failure for a routing error.
-    if (!registeredRoute && requestedModel) {
+    if (!exactRouteProbe && !registeredRoute && requestedModel) {
       const redirect = MODEL_BY_SLUG.get(readNativeRedirect());
       if (redirect && routeProviderEnabled(redirect.provider)) {
         registeredRoute = redirect;
@@ -4286,6 +4289,10 @@ async function handleResponses(request, response, requestUrl) {
     route = registeredRoute && routeProviderEnabled(registeredRoute.provider)
       ? registeredRoute
       : undefined;
+    // An operator alias can resolve to a fixed Jev route as well; the resolved
+    // route owns this guarantee, not just the original public request slug.
+    const allowModelFailover = !exactRouteProbe
+      && !["jev/sol", "jev/astra"].includes(route?.slug);
     if (route) {
       const invalidHistoryCall = findUnusableFunctionCallArguments(payload.input);
       if (invalidHistoryCall) {
@@ -4342,7 +4349,7 @@ async function handleResponses(request, response, requestUrl) {
         route,
         controller.signal,
         compactV2,
-        { allowFailover: !exactRouteProbe, canonicalReplay },
+        { allowFailover: allowModelFailover, canonicalReplay },
       );
       const compacted = compaction.route || route;
       recordCompactionUsage(compaction, route, startedAt, diagnostics);
@@ -4450,7 +4457,7 @@ async function handleResponses(request, response, requestUrl) {
       // less than the request it avoids. The cooldown expires by itself, so
       // the operator's chosen model comes back without anyone doing anything.
       const settings = readFailoverSettings();
-      const cooled = !exactRouteProbe && settings.enabled
+      const cooled = allowModelFailover && settings.enabled
         ? providerCooldown(route.provider)
         : undefined;
       if (cooled) {
@@ -4675,7 +4682,7 @@ async function handleResponses(request, response, requestUrl) {
         // rejection again. Exact-route suppresses only the nested swap; the
         // provider's own cooldown evidence remains valid operational state.
         recordProviderCooldown(route.provider, verdict);
-        const moved = exactRouteProbe ? undefined : await attemptModelFailover({
+        const moved = !allowModelFailover ? undefined : await attemptModelFailover({
           progress: activity.progress,
           request,
           response,
