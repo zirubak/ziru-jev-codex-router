@@ -1108,6 +1108,8 @@ test("fallback-only splits do not claim account breakdown or a complete range mi
       if (message.type() === "error") pageErrors.push(message.text());
     });
 
+    // Keep the fixed usage fixtures inside the rolling 30-day chart window.
+    await page.clock.setFixedTime(new Date("2026-08-30T12:00:00.000Z"));
     await page.goto(`${url}?fallbackUsage=1`, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForFunction(() => window.routerControlTest.navigationReady());
     assert.equal(

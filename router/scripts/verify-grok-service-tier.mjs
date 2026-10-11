@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocket } from "undici";
 import { RESPONSES_WEBSOCKET_BETA } from "../src/responses-websocket.mjs";
 import { callerBaseUrl } from "../src/caller-auth.mjs";
+import { PYTHON_REQUIREMENTS, requirementParts } from "../src/install-plan.mjs";
 import { renderLiteLlmConfig } from "../src/litellm-config.mjs";
 import { tokenUsageFromPayload } from "../src/response-usage.mjs";
 import { openPort } from "../test/port-pool.mjs";
@@ -17,6 +18,9 @@ import { openPort } from "../test/port-pool.mjs";
 assert.ok(process.argv[2], "pass the locked venv Python executable");
 const python = path.resolve(process.argv[2]);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const litellmVersion = PYTHON_REQUIREMENTS.map(requirementParts)
+  .find(({ name }) => name === "litellm")?.version;
+assert.ok(litellmVersion, "the gateway must declare an exact LiteLLM pin");
 const temp = mkdtempSync(path.join(os.tmpdir(), "grok-tier-proof-"));
 const key = "sk-synthetic-grok-tier-internal-key-long-enough";
 const pieces = Array.from({ length: 1000 }, (_, i) => `piece-${i}-Привет\n`);
@@ -162,7 +166,7 @@ try {
     assert.ok(Date.now() < deadline, errors);
     await new Promise(resolve => setTimeout(resolve, 50));
   }
-  gateway = start(python, ["-c", "import importlib.metadata; assert importlib.metadata.version('litellm') == '1.96.0'; from litellm import run_server; run_server()", "--config", configPath, "--host", "127.0.0.1", "--port", String(gatewayPort)], {
+  gateway = start(python, ["-c", `import importlib.metadata; assert importlib.metadata.version('litellm') == ${JSON.stringify(litellmVersion)}; from litellm import run_server; run_server()`, "--config", configPath, "--host", "127.0.0.1", "--port", String(gatewayPort)], {
     LITELLM_LOCAL_MODEL_COST_MAP: "True", DATABASE_URL: undefined, LITELLM_MASTER_KEY: key,
     // Match production startup: LiteLLM prints Unicode on Windows too.
     PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1",

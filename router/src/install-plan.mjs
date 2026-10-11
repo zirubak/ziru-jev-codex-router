@@ -25,14 +25,25 @@ export const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.u
 // litellm still needs fastapi<0.140: `get_flat_dependant` was removed in 0.140
 // and `litellm/proxy/management_endpoints/management_v1/common.py` imports it,
 // so the proxy dies on startup with an ImportError. Its own metadata does not
-// say so -- 1.96.0 declares `fastapi<1.0,>=0.136.3` -- which is why the cap is
+// say so -- 1.96.2 declares `fastapi<1.0,>=0.136.3` -- which is why the cap is
 // held here and why lifting it needs the gateway *booted*, not just resolved.
-// Verified against 1.96.0 by starting the proxy on both pins.
+// Failure verified against 1.96.0 on both FastAPI pins; the retained cap also
+// boots 1.96.2 through both hash-verified installers.
 //
 // The litellm pin itself is a security floor as much as a version: 1.95.0
 // required `cryptography>=48.0.1,<49.0`, which no patched cryptography can
-// satisfy (GHSA-g6cj-pr64-35w5 is fixed in 50.0.0). Do not move it back.
-export const PYTHON_REQUIREMENTS = ["litellm[proxy]==1.96.0", "fastapi==0.139.2"];
+// satisfy (GHSA-g6cj-pr64-35w5 is fixed in 50.0.0). 1.96.2 also fixes
+// GHSA-3cv6-jpf6-8222. Do not move either security floor back.
+// These transitive pins keep regeneration above the release audit's security
+// floors even when another dependency would permit an affected version.
+export const PYTHON_REQUIREMENTS = [
+  "litellm[proxy]==1.96.2",
+  "fastapi==0.139.2",
+  "multidict==6.9.1",
+  "oauthlib==4.0.0",
+  "PyJWT==2.15.1",
+  "urllib3==2.8.0",
+];
 
 // Pinning the two direct requirements left their whole transitive tree floating:
 // every install re-resolved `litellm[proxy]` against PyPI and executed whatever
