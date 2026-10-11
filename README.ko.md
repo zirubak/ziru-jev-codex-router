@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
-현재 prerelease: [v0.1.0-preview.3 변경 사항과 한계](docs/release/v0.1.0-preview.3.md). [릴리즈](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3)에서 설치·검증 범위를 확인하세요.
+현재 공개 prerelease: **[v0.1.0-preview.3](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3)** — gateway 보안 강화, 의존성 갱신, 네 가지 라우팅 모드. [변경 사항·검증·알려진 한계](docs/release/v0.1.0-preview.3.md)를 확인하세요.
 
 # ZIRU Jev Codex Router
 
@@ -10,7 +10,7 @@
 
 [English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조) · [프로젝트에 스타 남기기](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
-ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합니다. 이 프로필을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다.
+ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합니다. 이 프로필을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. Auto에서는 TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다. Manual은 사용자가 정한 effort를, Jev Sol과 Jev Astra는 사용자가 고른 모델을 유지합니다.
 
 목표는 필요한 품질을 확보하면서 코딩·검사·리뷰·수정에 드는 불필요한 토큰 사용을 줄이는 것입니다. 버튼 문구를 바꾸는 일과 최종 보안 리뷰에는 서로 다른 접근이 필요하니까요.
 
@@ -18,16 +18,17 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 
 1. 아래 루트 설치기로 설치합니다.
 2. `codex -p jev`를 실행하여 Jev 모델과 전용 로컬 제공자를 함께 선택합니다.
-3. 평소처럼 요청합니다. 표시 기능을 켜면 실제 모델·effort 라벨을 확인할 수 있습니다.
+3. 평소처럼 요청합니다. 표시 기능을 켜면 선택된 모델·effort 라벨을 확인할 수 있습니다.
 
 일반 Codex와 Desktop 모델 목록은 공식 OpenAI/ChatGPT 제공자와 목록을 유지합니다.
 설치기는 전역 `openai_base_url`이나 모델 목록을 바꾸지 않습니다. 기존 대화는
 저장된 모델·제공자를 유지하므로 일반 사용은 새 공식 모델 대화에서 확인하세요.
 자세한 설정·복구·검증은 [제공자 격리 안내](docs/release/provider-isolation.md)를 참고하세요.
 
-기존 effort 메뉴를 유지하는 [Desktop 연결 후보](docs/release/native-desktop-bridge.md)도
-별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
-적용합니다. 사용자가 2026-10-02 새 Desktop 세션에서 전환과 effort 슬라이더의 정상 동작을 확인했습니다. 일반 설치로 활성화되지 않습니다.
+선택형 [Desktop 연결](docs/release/native-desktop-bridge.md)은 기존 effort 메뉴를
+유지하면서 아래 네 모드를 추가합니다. `./install.sh --desktop`으로 활성화하며,
+일반 설치는 CLI 프로필을 제공합니다. Desktop 연결은 앱 빌드에 의존하므로 실행 시
+native contract를 검사합니다.
 
 알려진 제한: Jev를 선택하면 Desktop의 Plan 선택이 초기화되는 문제가 아직 열려 있습니다.
 [추적 이슈 #30](https://github.com/zirubak/ziru-jev-codex-router/issues/30)을 확인하세요.
@@ -42,6 +43,27 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 | Jev Codex Router Manual | Jev가 호환 모델을 결정 | 사용자가 선택한 low·medium·high·xhigh·max 유지 |
 | Jev Sol Router | 사용자가 GPT-6.1 Sol 선택 | Jev가 결정하며 화면 슬라이더 값은 무시 |
 | Jev Astra Router | 사용자가 GPT-6 Astra 선택 | Jev가 결정하며 화면 슬라이더 값은 무시 |
+
+### 내가 정할 항목을 고르세요
+
+**Auto는 둘 다 Jev에게, Manual은 effort를 직접, Jev Sol·Jev Astra는 모델을 직접 정합니다.**
+
+![Auto는 모델과 effort를 맡기고, Manual은 High effort를 고정하고, Jev Sol과 Jev Astra는 각 모델을 고정하는 네 컷 만화. 나머지 선택은 Jev가 합니다.](docs/assets/routing-modes-comic.png)
+
+*조작 방법을 설명하는 그림이며 실제 제품 화면이나 특정 경로를 보장하는 결과는 아닙니다. Jev Sol·Jev Astra도 effort 슬라이더를 무시하고 Jev가 추론 깊이를 정합니다.*
+
+- **Auto:** “이 버그를 재현하고 수정해줘.” 모델과 effort를 모두 Jev가 고릅니다.
+- **Manual + High:** effort 메뉴에서 High를 고릅니다. 모델은 바뀔 수 있지만 High는 유지합니다. 프롬프트에 “High”라고 적는 것만으로 Manual 설정이 바뀌지는 않습니다.
+- **Jev Sol:** GPT-6.1 Sol을 유지하면서 Jev가 effort를 조절합니다.
+- **Jev Astra:** GPT-6 Astra를 유지하면서 Jev가 effort를 조절합니다.
+
+Auto·Jev Sol·Jev Astra에서는 슬라이더에 High가 보여도 실제 effort가 다를 수 있습니다.
+모델과 effort를 모두 직접 고르려면 일반 Codex의 공식 모델 항목을 사용하세요.
+높은 effort나 모델 라벨만으로 결과의 정확성 또는 검토 완료를 증명하지는 않습니다.
+라벨은 선택 경로를 표시합니다. 실제 백엔드 모델의 신원을 확인하려면 응답 메타데이터도
+일치해야 하며, 화면 설정이나 모델의 자기 설명만으로는 실행 신원을 확인할 수 없습니다.
+
+### Desktop 연결 활성화
 
 실제 설치에 사용하는 고정 checkout에서 `./install.sh --desktop`을 실행하세요.
 작업을 저장하고 Codex를 직접 종료한 다음 생성된 실행기를 여세요.
@@ -128,7 +150,10 @@ CLI 프로필만 사용한다면 새 `codex -p jev` 세션을 시작하세요.
 
 ## 설치
 
-현재는 **macOS Codex Desktop용 공개 preview**입니다. 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
+현재는 **macOS Codex Desktop용 공개 소스 preview**입니다. 아래 루트 설치
+트랜잭션을 사용하세요. 서명·공증된 `.app`·`.dmg`는 배포하지 않으며, 내장 upstream의
+다운로드·Homebrew 명령은 Jev 설치 경로가 아닙니다. [지원 범위](docs/SUPPORT.md)를
+참고하세요. 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
 
 ### 먼저, Jev에게 작은 열쇠 하나
 
@@ -170,8 +195,9 @@ TYPESAFE_API_KEY=
 
 ```text
 https://github.com/zirubak/ziru-jev-codex-router 를 내 Mac에 설치해줘.
-먼저 README와 프로젝트 지침을 읽어줘. 인증된 저장소 접근을 확인하고
+먼저 README와 프로젝트 지침을 읽어줘. 공개 HTTPS 저장소를
 ~/Documents/GitHub/ziru-jev-codex-router 에 clone하되 기존 폴더와 변경은 보존해.
+공개 저장소 clone에는 GitHub 로그인이 필요하지 않아.
 macOS, Node.js 22.19 이상, Python 3.11 이상, Codex 로그인과 필요한 포트를 확인해.
 내 개인 ~/.jev.env를 JEV_ENV_FILE로 사용해. 키 값을 채팅·명령 인자·Git에
 출력하거나 복사하지 마. 파일이 없으면 개인 파일의 위치를 물어보고,
@@ -191,10 +217,12 @@ Codex를 재시작하지 말고 codex -p jev 선택 방법과
 <details>
 <summary><strong>터미널에서 직접 설치하려면</strong></summary>
 
-먼저 GitHub CLI에 로그인하고 개인 키 파일을 준비합니다. 설치 폴더가 이미 있다면 내용을 확인한 뒤 진행하세요.
+개인 키 파일을 먼저 준비하세요. 공개 저장소는 GitHub 로그인 없이 Git의 HTTPS
+clone으로 받을 수 있습니다. 설치 폴더가 이미 있다면 내용을 확인한 뒤 진행하세요.
+아래 명령은 특정 release tag 대신 최신 `main`을 설치합니다.
 
 ```sh
-gh repo clone zirubak/ziru-jev-codex-router "$HOME/Documents/GitHub/ziru-jev-codex-router"
+git clone https://github.com/zirubak/ziru-jev-codex-router.git "$HOME/Documents/GitHub/ziru-jev-codex-router"
 cd "$HOME/Documents/GitHub/ziru-jev-codex-router"
 chmod 600 "$HOME/.jev.env"
 JEV_ENV_FILE="$HOME/.jev.env" ./install.sh
@@ -216,20 +244,22 @@ bin/jev-codex-router smoke
 ## 네 선택 모드
 
 격리된 Jev 프로필에 네 경로가 있습니다. `codex -p jev`는 Auto를 선택합니다.
-`codex -p jev -m jev/manual -c model_reasoning_effort=high`는 일반 모드의 High를 선택합니다.
+`codex -p jev -m jev/manual -c model_reasoning_effort=high`는 Manual의 High를 선택합니다.
 
-| 경로 | 광고된 effort | 동작 |
+| 경로 | 표시되는 effort | 동작 |
 | --- | --- | --- |
 | Jev Codex Router by Auto (`jev/auto`) | Auto 하나 | Jev가 모델과 effort 선택 |
 | Jev Codex Router (`jev/manual`) | low (Light), medium, high, xhigh, max | Jev가 모델 선택, 코드는 사용자 effort 유지 |
+| Jev Sol Router (`jev/sol`) | low, medium, high, xhigh, max (무시) | GPT-6.1 Sol 고정, Jev가 effort 선택 |
+| Jev Astra Router (`jev/astra`) | low, medium, high, xhigh, max (무시) | GPT-6 Astra 고정, Jev가 effort 선택 |
 
-일반 모드는 effort 누락 시 medium을 사용하며 잘못된 값은 inference 전에 거부합니다.
+Manual은 effort 누락 시 medium을 사용하며 잘못된 값은 inference 전에 거부합니다.
 캐시 전환·재시도·fallback에서 선택을 유지합니다. Auto의 선택 sentinel은 실행 모델에
-전달하지 않습니다. Jev 기술 오류 시 Auto는 Sol 6.1/high, 일반 모드는 Sol 6.1/선택 effort를
+전달하지 않습니다. Jev 기술 오류 시 Auto는 Sol 6.1/high, Manual은 Sol 6.1/선택 effort를
 사용합니다. 같은 effort를 지원하는 quota fallback이 없으면 명확한 오류를 반환합니다.
-두 경로 모두 Plan 품질·검토 지침을 유지하며 Ultra는 제외합니다. Native Desktop 메뉴의
-실제 표시는 미검증이고, 일반 Desktop은 기본 공급자와 catalog를 유지합니다.
-[릴리즈 검증 기록](docs/release/selection-modes.md)을 참고하세요.
+Auto·Manual은 Plan 품질·검토 지침을 유지하며 Ultra는 제외합니다. 일반 Codex는 기본
+공급자와 catalog를 유지하고 Desktop 연결은 선택 사항입니다. [선택 모드 동작](docs/release/selection-modes.md)과
+[현재 preview 검증 한계](docs/release/v0.1.0-preview.3.md#validation)를 참고하세요.
 
 Sol(`jev/sol`)과 Astra(`jev/astra`)는 설계·최종·위험 리뷰에서도 선택 모델을
 유지하며 Jev가 effort만 정합니다. Jev 판단·응답 검증 오류나 키·작업 부재 시
@@ -278,7 +308,7 @@ Kill switch는 Jev 호출 없이 선택 모델/high, shadow는 판단을 기록�
 심각도순으로 정리하겠습니다.
 ```
 
-라벨은 각 assistant 메시지의 첫 텍스트와 함께 표시되며, 모델이 추론을 시작하기 전에 미리 표시되지는 않습니다. 구조화된 JSON 출력에는 붙이지 않습니다. 도구를 실행하거나 새 요청을 보낸 뒤에는 다른 모델과 effort가 표시될 수 있습니다.
+라벨은 각 assistant 메시지의 첫 텍스트와 함께 표시되며, 모델이 추론을 시작하기 전에 미리 표시되지는 않습니다. 구조화된 JSON 출력에는 붙이지 않습니다. 도구를 실행하거나 새 요청을 보낸 뒤에는 선택 모드에 따라 모델 또는 effort가 달라질 수 있습니다. Jev Sol·Jev Astra의 모델은 유지됩니다.
 
 ## 모델을 고르는 기준
 
@@ -290,13 +320,18 @@ Kill switch는 Jev 호출 없이 선택 모델/high, shadow는 판단을 기록�
 | GPT-6.1 Sol | 일반적인 구현과 디버깅 | low · medium · high · xhigh · max |
 | GPT-6 Astra | 아키텍처, 독립 최종 리뷰, 위험 중심 리뷰 | low · medium · high · xhigh · max |
 
-현재 정책은 위 리뷰·아키텍처 범주에 Astra를 사용하고, effort는 별도로 판단합니다. 문제가 없는 연속 작업에서는 판단을 제한적으로 재사용합니다. 새 사용자 요청, 오류, 문맥 압축, 도구 체인 변경이 있으면 다시 판단합니다.
+Auto·Manual 정책은 위 리뷰·아키텍처 범주에 Astra를 사용합니다. Auto는 effort도
+판단하고 Manual은 사용자 effort를 유지합니다. Jev Sol·Jev Astra는 이 범주에서도
+사용자가 고른 모델을 유지합니다. 문제가 없는 연속 작업에서는 판단을 제한적으로 재사용합니다.
+새 사용자 요청, 오류, 문맥 압축이 있으면 다시 판단합니다. 도구 체인에 한정된 판단은
+도구가 바뀌면 재사용을 끝내지만, 사용자 턴에 한정된 판단은 정상적인 도구 변경에도
+재사용할 수 있습니다.
 
-**Jev에 기술적인 오류가 생기거나 키·작업 정보가 없으면** **GPT-6.1 Sol / high / Standard**로 실행을 이어갑니다. Sol/high 라벨만으로 정상 선택과 오류 시 대체 실행을 구분할 수는 없으며, 로컬 진단에서 확인할 수 있습니다. Kill switch, shadow mode, 모델 사용량 소진에는 [별도 처리](server/INSTALL.md)가 적용됩니다.
+**Jev에 기술적인 오류가 생기거나 키·작업 정보가 없으면** Auto는 **GPT-6.1 Sol / high / Standard**를, Manual은 Sol과 사용자 effort를 사용합니다. Jev Sol·Jev Astra는 선택 모델과 high effort를 사용합니다. Sol/high 라벨만으로 정상 선택과 오류 시 대체 실행을 구분할 수는 없으며, 로컬 진단에서 확인할 수 있습니다. Kill switch, shadow mode, 모델 사용량 소진에는 [별도 처리](server/INSTALL.md)가 적용됩니다.
 
-네이티브 Plan 모드에서는 구현 가능한 계획의 품질을 우선하고, 불확실성·의존성·실패 영향·후속 수정 비용에 따라 Jev가 모델과 추론 effort를 선택합니다. 중요한 계획에는 독립 검토를, 필요한 경우 허용된 에이전트 협력을 권고합니다. 검토 안내는 위임 권한이나 검토 완료 증거를 만들지 않으며 Ultra를 자동으로 선택하지 않습니다. 승인된 계획의 단순 문구 수정은 가벼운 경로를 사용할 수 있습니다. [Plan 정책과 검증 기록](docs/release/adaptive-planning.md)을 참고하세요.
+Auto·Manual의 네이티브 Plan 모드에서는 구현 가능한 계획의 품질을 우선하고, 불확실성·의존성·실패 영향·후속 수정 비용에 따라 호환 모델을 선택합니다. Auto는 effort도 판단하고 Manual은 사용자 effort를 유지합니다. 중요한 계획에는 독립 검토를, 필요한 경우 허용된 에이전트 협력을 권고합니다. 검토 안내는 위임 권한이나 검토 완료 증거를 만들지 않으며 Ultra를 자동으로 선택하지 않습니다. 승인된 계획의 단순 문구 수정은 가벼운 경로를 사용할 수 있습니다. Jev Sol·Jev Astra에도 계획·검토 지침이 적용되며 선택 모델을 유지하면서 effort를 조절합니다. [Plan 정책과 검증 기록](docs/release/adaptive-planning.md)을 참고하세요.
 
-**Ultra는 사용자가 직접 선택합니다.** 독립적인 작업을 병렬로 나누면 도움이 될 때 라우터가 일반 Sol 또는 Astra 모델의 Ultra를 선택하도록 권할 수 있습니다. 현재 권고 문구는 한국어입니다. 권고만으로 모드가 바뀌거나 위임이 켜지지는 않으며, 클라이언트 지원과 위임 권한이 필요합니다. Ultra는 토큰을 더 사용할 수 있습니다.
+**Ultra는 사용자가 직접 선택합니다.** 독립적인 작업을 병렬로 나누면 도움이 될 때 Auto·Manual은 일반 Sol 또는 Astra 모델의 Ultra를 선택하도록 권할 수 있습니다. Jev Sol·Jev Astra는 이 권고를 추가하지 않습니다. 현재 권고 문구는 한국어입니다. 권고만으로 모드가 바뀌거나 위임이 켜지지는 않으며, 클라이언트 지원과 위임 권한이 필요합니다. Ultra는 토큰을 더 사용할 수 있습니다.
 
 ## 비용은 얼마나 줄어드나요?
 
@@ -344,6 +379,9 @@ Jev 요청은 `https://api.typesafe.ai/v1/systemone`으로 직접 보내며 Verc
 | --- | --- |
 | [운영 안내](server/INSTALL.md) | 설치·진단·업데이트·제거 |
 | [지원 범위](docs/SUPPORT.md) | 지원 환경과 검증 한계 |
+| [현재 preview](docs/release/v0.1.0-preview.3.md) | 보안 수정·검증·알려진 한계 |
+| [네 모드 라우팅](docs/release/fixed-model-routes-2026-10-10.md) | 고정 모델의 effort 선택·실패 처리 |
+| [README 검증](docs/release/readme-refresh-2026-10-11.md) | 네 모드 설명·카툰의 확인 범위 |
 | [비용](docs/COSTS.md) | 측정한 항목과 아직 모르는 항목 |
 | [기여](CONTRIBUTING.md) | 검사와 기여 방법 |
 | [출시](docs/RELEASING.md) | 출시 검사·게시된 preview·검증 한계 |
@@ -354,6 +392,7 @@ Jev 요청은 `https://api.typesafe.ai/v1/systemone`으로 직접 보내며 Verc
 
 [0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router)의 commit `8701ef788aa8cb0948f299538747fb01029d32b8`을 기반으로 만들었습니다. 원본 MIT 저작권·허가문은 [LICENSE](LICENSE)에 유지하며, 내장 라우터의 출처와 별도 라이선스는 [ROUTER_FORK.md](ROUTER_FORK.md)에 기록했습니다.
 
-ZIRU는 연구 자료를 반영한 라우팅 정책, 현재의 세 모델 후보, Sol/high 기술적 fallback, 응답의 모델 표시, Ultra 수동 권고와 설치 보호 기능을 더했습니다.
+ZIRU는 연구 자료를 반영한 Auto·Manual 정책, effort를 조절하는 Sol·Astra 고정 경로,
+모드별 기술적 fallback, 응답의 모델 표시, Ultra 수동 권고와 설치 보호 기능을 더했습니다.
 
 프로젝트를 만들며 얻은 실험 결과와 AI 코딩 활용 이야기는 [ZIRU의 Medium 블로그](https://medium.com/@jh.baek.sd)에서 읽을 수 있습니다. 저장소에는 [프로젝트 공유용 이미지](docs/assets/social-preview.png)도 포함되어 있습니다.
