@@ -10,6 +10,7 @@ For vulnerabilities, use [SECURITY.md](SECURITY.md), not a public issue.
 Use Node.js 22.19+ and Python 3.11+. From the repository root:
 
 ```sh
+git config --local core.hooksPath .githooks
 cd router
 npm ci --include=dev
 npm run check
@@ -18,6 +19,11 @@ cd ..
 PYTHONPATH=server python3 -m unittest discover -s server -p 'test_*.py'
 git diff --check
 ```
+
+The committed pre-commit hook checks staged content for credentials without
+printing their values. Git does not transfer local configuration when cloning,
+so enable it once in each checkout with the command above. Do not bypass a
+finding: remove the credential, and revoke it if it has already been exposed.
 
 These tests use synthetic fixtures and temporary state; no TypeSafe key or
 ChatGPT account is required. Browser and real Codex binary requirements are

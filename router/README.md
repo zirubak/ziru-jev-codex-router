@@ -1,5 +1,12 @@
 # Codex Router
 
+> This directory preserves the embedded upstream router and its documentation.
+> For **ZIRU Jev Codex Router**, use the [root macOS installer](../README.md#install)
+> and [release notes](../docs/release/v0.1.0-preview.3.md). Commands below that
+> reference `duolahypercho/codex-router`, its Homebrew formula, or its download
+> artifacts install the upstream project; they are not supported installers
+> for this Jev preview. The formula is retained unchanged as upstream reference.
+
 ## Install everything (recommended)
 
 This is the default setup: **guided provider setup + Electron Control Center +

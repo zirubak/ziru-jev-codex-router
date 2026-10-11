@@ -1,6 +1,6 @@
 # Support and test matrix
 
-Last reviewed: 2026-10-02.
+Last reviewed: 2026-10-11.
 
 ## Product support
 
@@ -90,6 +90,13 @@ npx playwright install chromium
 On Linux CI, use `npx playwright install --with-deps chromium`.
 
 ## Preview release limitations
+
+The public preview is source-only. Use the root macOS transaction; the embedded
+upstream Homebrew formula, upstream download artifacts and documentation-site
+deployment are not Jev release channels. No signed/notarized binary is shipped.
+See [preview.3](release/v0.1.0-preview.3.md) for the measured dependency, installer
+and platform limits. Desktop Plan selection remains tracked in
+[issue #30](https://github.com/zirubak/ziru-jev-codex-router/issues/30).
 
 Manual Windows installation and end-to-end use have not been validated by the
 maintainer. The macOS product preview may ship with this disclosed limitation;

@@ -168,7 +168,8 @@ the redacted doctor/support workflows.
 
 ## Reporting a vulnerability
 
-Use [GitHub Private Vulnerability Reporting](https://github.com/0xNatoshi/jev-codex-router/security/advisories/new).
+For this monorepo, follow the [root security policy](../SECURITY.md) and use
+[GitHub Private Vulnerability Reporting](https://github.com/zirubak/ziru-jev-codex-router/security/advisories/new).
 Do not include technical vulnerability details, access tokens, API keys,
 credential files, full prompts, response bodies, or unredacted logs in a public
 issue.

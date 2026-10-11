@@ -1,12 +1,12 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
-다음 릴리즈 초안: [v0.1.0-preview.2 변경 사항과 한계](docs/release/v0.1.0-preview.2.md). 초안 준비 상태이며 게시나 최신 소스의 전체 실제 설치 완료를 뜻하지 않습니다.
+현재 prerelease: [v0.1.0-preview.3 변경 사항과 한계](docs/release/v0.1.0-preview.3.md). [릴리즈](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3)에서 설치·검증 범위를 확인하세요.
 
 # ZIRU Jev Codex Router
 
 **Codex가 작업 단계에 맞는 모델과 추론 깊이를 선택하도록 하세요.**
 
-![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) [![CI](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml/badge.svg)](https://github.com/zirubak/ziru-jev-codex-router/actions/workflows/ci.yml)
+![macOS preview](docs/assets/badges/platform.svg) ![MIT license](docs/assets/badges/license.svg) · [로컬 릴리즈 검증](docs/release/v0.1.0-preview.3.md#validation)
 
 [English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조) · [프로젝트에 스타 남기기](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
@@ -28,6 +28,9 @@ ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합�
 기존 effort 메뉴를 유지하는 [Desktop 연결 후보](docs/release/native-desktop-bridge.md)도
 별도로 준비했습니다. Auto는 화면 effort를 무시하고 Jev가 결정하며 Manual은 선택값을
 적용합니다. 사용자가 2026-10-02 새 Desktop 세션에서 전환과 effort 슬라이더의 정상 동작을 확인했습니다. 일반 설치로 활성화되지 않습니다.
+
+알려진 제한: Jev를 선택하면 Desktop의 Plan 선택이 초기화되는 문제가 아직 열려 있습니다.
+[추적 이슈 #30](https://github.com/zirubak/ziru-jev-codex-router/issues/30)을 확인하세요.
 
 ## Desktop에서 라우팅 모드 선택하기
 
@@ -76,7 +79,7 @@ bin/jev-codex-router update
 갱신하려면 `./install.sh --desktop`을 별도로 실행하세요. updater는 `--desktop`을
 전달하지 않습니다. 준비가 되면 Desktop을 직접 종료하고 다시 여세요.
 
-[preview.2 변경 사항과 알려진 한계](docs/release/v0.1.0-preview.2.md),
+[preview.3 변경 사항과 알려진 한계](docs/release/v0.1.0-preview.3.md),
 [진단·복구 안내](server/INSTALL.md)를 참고하세요.
 
 ### Codex에게 업데이트 맡기기
@@ -125,7 +128,7 @@ CLI 프로필만 사용한다면 새 `codex -p jev` 세션을 시작하세요.
 
 ## 설치
 
-현재는 **macOS Codex Desktop용 비공개 preview**입니다. 저장소 접근 권한, 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
+현재는 **macOS Codex Desktop용 공개 preview**입니다. 정상적인 Codex ChatGPT 로그인, Node.js **22.19 이상**, Python **3.11 이상**, [TypeSafe API 키](https://console.typesafe.ai/keys)가 필요합니다.
 
 ### 먼저, Jev에게 작은 열쇠 하나
 
@@ -343,7 +346,7 @@ Jev 요청은 `https://api.typesafe.ai/v1/systemone`으로 직접 보내며 Verc
 | [지원 범위](docs/SUPPORT.md) | 지원 환경과 검증 한계 |
 | [비용](docs/COSTS.md) | 측정한 항목과 아직 모르는 항목 |
 | [기여](CONTRIBUTING.md) | 검사와 기여 방법 |
-| [출시](docs/RELEASING.md) | 출시 검사; 공개 전환 때 진행할 Star History 설정 |
+| [출시](docs/RELEASING.md) | 출시 검사·게시된 preview·검증 한계 |
 
 **Windows는 검증하지 못했습니다.** 제작자는 Windows 설치와 전체 동작을 시험하지 못했습니다. 루트 설치 도구는 macOS launchd를 사용하며, 이식 가능한 `router/`의 CI가 Windows 제품 지원을 뜻하지는 않습니다. Windows 사용자가 격리된 환경에서 해당 구성요소를 시험하고 [피드백](https://github.com/zirubak/ziru-jev-codex-router/issues)을 남겨주시면 도움이 됩니다. OS·Node.js·Codex 버전, commit, 재현 절차와 비밀을 제거한 오류를 포함해주세요. 키·인증 파일·원시 대화·백업은 첨부하지 마세요.
 

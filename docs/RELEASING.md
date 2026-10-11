@@ -70,27 +70,30 @@ documented owner merge policy apply independently of those unavailable settings.
   repository workflows. No paid usage increase or account billing change is
   authorized or claimed by this policy change.
 
-## Deferred until an explicitly authorized public release
+## Star History status (2026-10-11)
 
-Owner decision, 2026-10-01 (America/Los_Angeles): defer Star History setup until
-this repository is made public. Do not request or create a token for it now.
-When the owner explicitly requests public release, check Star History's current
-integration/authentication requirements, configure the supported README embed,
-and verify that the actual chart renders in both READMEs. Do not assume that
-changing visibility alone resolves the previously observed HTTP 403. Never put
-raw access tokens in README files, image URLs, commits or chat. This note is a
-future release checklist item, not authorization to change repository visibility
-or create credentials automatically.
+Public release is authorized. The current official integration instructions were
+checked, including the September 2026 endpoint update. The chart service still
+returned HTTP 403 in this environment, and browser access was blocked by the
+client. Neither changing visibility nor a documented embed URL proves a render.
+No token was requested/created, no credential was embedded, and no working chart
+is claimed in either README. The existing stargazer links remain available.
+This cosmetic integration remains unverified and is disclosed in preview.3.
+
+References: [current instructions](https://www.star-history.com/blog/how-to-use-github-star-history/),
+[endpoint update](https://www.star-history.com/blog/github-stargazer-api-restriction/).
 
 ## Published previews
 
 - [v0.1.0-preview.1 notes](release/v0.1.0-preview.1.md) — first private macOS
   preview, source `cf7c6c0b2ced07aa40b8c39f777c9dec8b9a18f2`.
   [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.1).
-
-## Prepared previews
-
-- [v0.1.0-preview.2 notes](release/v0.1.0-preview.2.md) — private release draft,
-  behavior source `25a72623c27ff8019a3b0eda8434865fff3e1b01`.
-  [Verified candidate record](release/v0.1.0-preview.2-verification.json).
-  Draft preparation does not certify full live installation of the latest source.
+- [v0.1.0-preview.2 notes](release/v0.1.0-preview.2.md) — published private
+  preview on October 3, 2026 UTC, target
+  `fa62e64680b2db1b4803d6274e40726be8faa00f`.
+  [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.2).
+  The historical notes describe the original preparation evidence and limits.
+- [v0.1.0-preview.3 notes](release/v0.1.0-preview.3.md) — first public macOS
+  source preview, security hardening and dependency remediation.
+  [Verification record](release/v0.1.0-preview.3-verification.json).
+  [GitHub Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3).
