@@ -8,12 +8,18 @@ This is an internal, contract-checked integration, not an officially supported
 Desktop extension API.
 
 The optional launcher preserves the original signed application bundle and the
-native model defaults. It adds two models to the native app-server model list:
+native model defaults. It adds four models to the native app-server model list:
 
 | Model | Meaning of the existing effort selector |
 | --- | --- |
 | Jev Codex Router Auto | Ignored: Jev chooses both model and effort |
 | Jev Codex Router Manual | Applied: Jev chooses the model and preserves the selected effort |
+| Jev Sol Router | Ignored: GPT-6.1 Sol stays selected and Jev chooses effort |
+| Jev Astra Router | Ignored: GPT-6 Astra stays selected and Jev chooses effort |
+
+The fixed-model routes were added after the Auto/Manual UI acceptance above.
+See [fixed-model verification](fixed-model-routes-2026-10-10.md) for their
+protocol/inference evidence and remaining fresh-UI validation limits.
 
 No frontend assets are patched. The ordinary effort menu remains unchanged.
 Enable Max in Settings → Configuration → Codex → Model features → Available
@@ -21,7 +27,7 @@ reasoning efforts when that native setting is available. Checking it alone is
 not evidence that a Max request executed. Official Astra Ultra does not imply
 that Jev supports Ultra. Some account
 configurations also filter the model list through an official-model allowlist;
-those configurations can hide both Jev entries. Do not restore a global custom
+those configurations can hide the Jev entries. Do not restore a global custom
 catalog or change feature flags to bypass that boundary.
 
 ## Installation and launch
@@ -86,8 +92,9 @@ restore the current session's environment but does not reinstall the LaunchAgent
 
 ## Provider isolation
 
-The base config contains named recovery definitions for `jev-router-auto` and
-`jev-router-manual`. They preserve access to saved Jev threads even if the
+The base config contains named recovery definitions for `jev-router-auto`,
+`jev-router-manual`, `jev-router-sol` and `jev-router-astra`. They preserve access
+to saved Jev threads even if the
 adapter is absent after an update. They do not change the selected model,
 default provider, official provider table, or global model catalog. Their
 recovery marker makes authenticated inference and compaction return HTTP 400
@@ -101,7 +108,8 @@ native provider. Native account operations, unknown methods, approvals, tool
 callbacks and compaction RPCs pass to the original app-server.
 
 Jev UI aliases use the known native `gpt-6.1-sol` metadata with separate
-`jev-router-auto` and `jev-router-manual` thread providers. Their explicit
+`jev-router-auto`, `jev-router-manual`, `jev-router-sol` and `jev-router-astra`
+thread providers. Their explicit
 `x-jev-selection-mode` header selects the existing Jev route at the authenticated
 local ingress; an unmarked official Sol request is never reclassified. The
 alias is restored for display only for a verified Jev route. If native model
@@ -142,7 +150,7 @@ permissions or discard existing history.
 
 ## Acceptance checks
 
-1. Confirm both Jev entries are visible in the native picker. If absent, retain
+1. Confirm all four Jev entries are visible in the native picker. If absent, retain
    ordinary Codex and report that visibility gate; do not change global routing.
 2. In new chats, verify official Sol, Auto and Manual requests. Compare the actual
    routed effort with the mode contract above, not just the composer label.

@@ -103,3 +103,22 @@ four preserves High while model selection remains automatic.
 The illustration is not a product screenshot, a guaranteed route, or measured
 performance evidence. Its lettering and mode semantics were visually checked.
 Dimensions and SHA256 are recorded in `manifest.json`.
+
+## Four-mode routing comic
+
+`routing-modes-comic.png`, dated 2026-10-11, updates the Auto/Manual composition
+to cover all four routing modes. It retains the caveman, blue robot, cave setting
+and parchment palette. Each panel has one control relationship:
+
+- Auto: "Pick my model and effort."
+- Manual: "I choose High. You choose the model." The High plaque is locked.
+- Jev Sol: "Keep Sol. You choose the effort."
+- Jev Astra: "Keep Astra. You choose the effort."
+
+The footer reads "Auto: Jev chooses both. Manual: you choose effort.
+Sol / Astra: you choose model." Effort controls are simplified illustrations;
+the README tables give the supported settings. This is not a product screenshot
+or a measured route. The final lettering, fixed Manual High setting and fixed
+Sol/Astra selections were visually inspected. Both READMEs use this asset with
+localized alternative text and captions. Dimensions and SHA-256 are recorded
+in `manifest.json`; the older Auto/Manual asset remains available.

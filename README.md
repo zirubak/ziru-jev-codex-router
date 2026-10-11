@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/assets/banner.png" alt="ZIRU Jev Codex Router"></p>
 
-Current prerelease: [v0.1.0-preview.3 changes and limits](docs/release/v0.1.0-preview.3.md). [Release](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3). See the notes for installation and validation limits.
+Current public prerelease: **[v0.1.0-preview.3](https://github.com/zirubak/ziru-jev-codex-router/releases/tag/v0.1.0-preview.3)** — gateway security hardening, dependency updates and four routing modes. [Changes, validation and known limits](docs/release/v0.1.0-preview.3.md).
 
 # ZIRU Jev Codex Router
 
@@ -10,7 +10,7 @@ Current prerelease: [v0.1.0-preview.3 changes and limits](docs/release/v0.1.0-pr
 
 [한국어](README.ko.md) · [Install](#install) · [Examples](#what-youll-see) · [How it works](#how-it-works) · [Star this project](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
-ZIRU exposes **Jev Codex Router** through the explicit `codex -p jev` profile. Select that profile and keep working as usual: ask a question, fix a bug, or build a feature. Jev, from TypeSafe, chooses between **GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason.
+ZIRU exposes **Jev Codex Router** through the explicit `codex -p jev` profile. Select that profile and keep working as usual: ask a question, fix a bug, or build a feature. In Auto, Jev from TypeSafe chooses between **GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason. Manual keeps the effort you select; Jev Sol and Jev Astra keep the model you select.
 
 The aim is to use enough reasoning to do the job well, while avoiding unnecessary token use across coding, tests, reviews and corrections. A small edit and a final security review should not need the same approach.
 
@@ -29,9 +29,10 @@ fresh official-model thread for normal use.
 See [provider isolation](docs/release/provider-isolation.md) for configuration,
 recovery and verification details.
 
-An optional, contract-checked [Desktop bridge candidate](docs/release/native-desktop-bridge.md)
-keeps the existing effort menu and separates Auto/Manual by name. The owner confirmed Auto/Manual switching and the effort slider in a fresh
-Desktop session on 2026-10-02. Ordinary installation does not enable this bridge.
+The optional [Desktop integration](docs/release/native-desktop-bridge.md)
+adds the four routing modes below and keeps the existing effort menu. Enable it
+with `./install.sh --desktop`; the standard installation enables the CLI profile.
+Desktop integration is build-specific and checks the native contract at launch.
 
 **Known Desktop limitation:** selecting Plan can reset in the UI
 ([issue #30](https://github.com/zirubak/ziru-jev-codex-router/issues/30)).
@@ -48,15 +49,15 @@ The optional Desktop integration adds these entries to the model menu:
 | Jev Sol Router | You select GPT-6.1 Sol | Jev chooses; the displayed slider is ignored |
 | Jev Astra Router | You select GPT-6 Astra | Jev chooses; the displayed slider is ignored |
 
-### The one thing to remember
+### Choose what you control
 
-**Auto delegates both the model and thinking depth to Jev. Manual lets you set the thinking depth.**
+**Auto: Jev chooses both. Manual: you choose effort. Jev Sol / Jev Astra: you choose the model.**
 *Effort* controls how deeply the model reasons before answering. Higher effort
 does not guarantee a correct answer or a larger model.
 
-![The README caveman delegates model and effort in Auto, then sets High effort in Manual while Jev still chooses the model.](docs/assets/auto-manual-comic.png)
+![Four routing choices: Auto delegates model and effort, Manual fixes High effort, Jev Sol fixes Sol, and Jev Astra fixes Astra. Jev chooses the remaining setting.](docs/assets/routing-modes-comic.png)
 
-*Illustrative routes. Manual sets effort, not the model; actual choices depend on context.*
+*Illustration of the controls, not a product screenshot or a guaranteed route. Jev Sol and Jev Astra ignore the effort slider; Jev chooses their actual effort.*
 
 ### Auto: describe the work
 
@@ -93,7 +94,22 @@ supported app build.
 For “Investigate this bug with High effort,” choose **Manual + High**. A Sol
 selection runs Sol/high; an Astra selection runs Astra/high. **High does not pin
 Astra.** Wait for the current response to finish before changing effort for the
-next request. To pin a model yourself, choose its official model entry instead.
+next request. To keep a model while Jev adapts effort, choose **Jev Sol Router**
+or **Jev Astra Router**. Choose an official model entry for ordinary Codex
+controls without Jev routing.
+
+### Jev Sol / Jev Astra: keep the model, delegate depth
+
+Choose **Jev Sol Router** for GPT-6.1 Sol or **Jev Astra Router** for GPT-6 Astra.
+Jev chooses effort for each request, including tool continuations. The slider
+is ignored, just as in Auto; these routes preserve your model choice even for
+architecture and final reviews.
+
+For “Keep Sol while you investigate and fix this bug,” choose **Jev Sol Router**.
+The route may move from Sol/high to Sol/low as the work changes. These are
+illustrations, not promised choices. A Jev decision failure uses that same
+model/high; a model execution failure or exhausted quota does not switch to
+another model. [Fixed-route behavior and evidence](docs/release/fixed-model-routes-2026-10-10.md).
 
 ### Examples: which mode should I choose?
 
@@ -118,7 +134,7 @@ chooses Astra, it is Astra/high. Subsequent tool continuations can change models
 while the effort you selected remains High. Typing “High” in a prompt is not the
 Manual setting: choose the mode and use the effort control before sending.
 
-**Example 3 — the same request, two different choices**
+**Example 3 — the same request, four different controls**
 
 > Review this patch for permission bugs and missing regression coverage.
 
@@ -126,11 +142,14 @@ Manual setting: choose the mode and use the effort control before sending.
 | --- | --- | --- |
 | Auto, even with High visible in the slider | Jev, under the route policy | Jev; actual effort may differ from the slider |
 | Manual + High | Jev, under the route policy | You; the selected effort stays High |
+| Jev Sol Router | You; GPT-6.1 Sol stays selected | Jev; the slider is ignored |
+| Jev Astra Router | You; GPT-6 Astra stays selected | Jev; the slider is ignored |
 
 Use Auto when you want the router to adjust depth as the work changes. Use
 Manual when keeping a particular reasoning depth matters to you. A mandatory
 review policy can constrain the model in either mode; Manual does not remove
-that policy or choose a fixed model. High is a setting, not proof that a review
+that policy or choose a fixed model. Jev Sol and Jev Astra keep the selected
+model while adapting effort. High is a setting, not proof that a review
 was performed or that the result is correct.
 
 These labels and scenarios explain the controls; they are not recorded runs,
@@ -141,7 +160,7 @@ fixed route promises or measured quality/cost comparisons.
 - Moving the slider in Auto does not override Jev. Select Manual to apply it.
 - Manual can change models while keeping your effort. An incompatible route is not silently served at a lower effort.
 - Auto's technical fallback for Jev communication/validation errors is Sol/high. Manual retains your selected effort. Kill switch, shadow and quota policies are separate.
-- Neither mode automatically enables Ultra. An Ultra recommendation does not grant delegation authority or replace your choice.
+- None of the four modes automatically enables Ultra. Auto/Manual may suggest a native Ultra option; fixed-model routes do not add that advice. A recommendation does not grant delegation authority or replace your choice.
 - The response's `[model / effort]` label describes the selected route. UI settings or a model's self-description alone do not establish execution identity. Missing or conflicting returned metadata prevents treating the label as backend-confirmed identity.
 
 From your stable installation checkout, run `./install.sh --desktop`. Save your
@@ -233,7 +252,10 @@ If you only use the CLI profile, start a new `codex -p jev` session instead.
 
 ## Install
 
-This is a **public preview for macOS Codex Desktop**. You need a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).
+This is a **public source preview for macOS Codex Desktop**. Install through the
+root transaction below. No signed/notarized `.app` or `.dmg` is distributed;
+embedded upstream downloads and Homebrew instructions are not Jev installers.
+See the [support matrix](docs/SUPPORT.md). You need a working Codex ChatGPT login, Node.js **22.19+**, Python **3.11+**, and a [TypeSafe API key](https://console.typesafe.ai/keys).
 
 ### First, give Jev its little key
 
@@ -275,9 +297,9 @@ Paste this into Codex:
 
 ```text
 Install https://github.com/zirubak/ziru-jev-codex-router on my Mac.
-Read its README and project instructions first. Verify authenticated access
-and clone it to ~/Documents/GitHub/ziru-jev-codex-router, preserving any
-existing checkout and local changes.
+Read its README and project instructions first. Clone the public HTTPS
+repository to ~/Documents/GitHub/ziru-jev-codex-router, preserving any existing
+checkout and local changes. GitHub authentication is not required to clone.
 Check macOS, Node.js 22.19+, Python 3.11+, Codex login and required ports.
 Use my private ~/.jev.env through JEV_ENV_FILE. Never print or copy key
 values into chat, command arguments or Git. If it is missing, ask for the
@@ -297,10 +319,13 @@ Installation includes a live smoke request and may consume usage. No app restart
 <details>
 <summary><strong>Prefer to install from Terminal?</strong></summary>
 
-Authenticate GitHub CLI and prepare the private key file first. If the destination already exists, inspect it before proceeding.
+Prepare the private key file first. The public repository can be cloned with
+Git over HTTPS without a GitHub login. If the destination already exists,
+inspect it before proceeding. This installs the latest `main`, not a pinned
+release tag.
 
 ```sh
-gh repo clone zirubak/ziru-jev-codex-router "$HOME/Documents/GitHub/ziru-jev-codex-router"
+git clone https://github.com/zirubak/ziru-jev-codex-router.git "$HOME/Documents/GitHub/ziru-jev-codex-router"
 cd "$HOME/Documents/GitHub/ziru-jev-codex-router"
 chmod 600 "$HOME/.jev.env"
 JEV_ENV_FILE="$HOME/.jev.env" ./install.sh
@@ -336,13 +361,15 @@ inference; cache changes, retries and fallback preserve the exact choice. Auto
 never forwards its selection sentinel to the executing model. Technical Jev
 failure uses Sol 6.1/high in Auto and Sol 6.1/selected effort in Manual. If no
 quota fallback supports the selected effort, Manual returns an explicit error.
-Both routes retain Plan quality and review guidance. Ultra remains excluded.
-Native Desktop menu rendering has not been verified; ordinary Desktop remains
-on its built-in provider and catalog. See [release evidence](docs/release/selection-modes.md).
+Auto/Manual retain Plan quality and review guidance. Ultra remains excluded.
+Ordinary Codex retains its built-in provider and catalog; Desktop integration
+is optional. See [selection behavior](docs/release/selection-modes.md) and the
+[current preview validation limits](docs/release/v0.1.0-preview.3.md#validation).
 
 Sol and Astra stay on your selected model even for architecture and final/risk
 reviews. The Desktop's numeric effort is transport metadata and is ignored on
-these routes; the response tag and local decision log show the actual effort.
+these routes; the response tag and local decision log show the selected effort.
+The tag alone does not verify the backend model's identity.
 Jev/schema/key/task failures use the same selected model/high. Native errors
 stop without switching models. Automatic quota state is rechecked once per
 fixed-route request; manual dry state remains authoritative. Kill skips Jev and
@@ -391,7 +418,7 @@ I’ll inspect the authentication boundaries and failure paths, then report
 findings by severity with file references.
 ```
 
-Labels appear with the first text of each assistant message; they are not shown before upstream reasoning begins. Structured JSON output is excluded. You may see a different route after a tool call or a new request.
+Labels appear with the first text of each assistant message; they are not shown before upstream reasoning begins. Structured JSON output is excluded. Model or effort can change after a tool call or a new request, depending on the selected mode. Jev Sol and Jev Astra keep their selected model.
 
 ## How it chooses
 
@@ -403,18 +430,26 @@ Labels appear with the first text of each assistant message; they are not shown 
 | GPT-6.1 Sol | General implementation and debugging | low · medium · high · xhigh · max |
 | GPT-6 Astra | Architecture, independent final review and risk-focused review | low · medium · high · xhigh · max |
 
-The Auto/Manual policy requires Astra for the review and architecture categories above; effort is chosen separately. Within a clean continuation, a decision can be reused within a bounded continuation. New user requests, errors, compaction and changes in the tool chain trigger reassessment.
+The Auto/Manual policy requires Astra for the review and architecture categories
+above. Auto chooses effort; Manual retains your choice. Jev Sol and Jev Astra
+keep their selected model in these categories. A decision can be reused within
+a bounded clean continuation. New user requests, errors and compaction trigger
+reassessment. A tool change also ends reuse when the decision is scoped to that
+tool chain; a decision scoped to the user turn can survive clean tool changes.
 
-In native Plan mode, Jev prioritizes an implementation-ready plan and chooses
-capability, reasoning depth and a review recommendation for the remaining
-uncertainty and risk. Substantive plans receive bounded completion guidance;
+In Auto/Manual native Plan mode, Jev prioritizes an implementation-ready plan
+and chooses compatible capability and a review recommendation for the remaining
+uncertainty and risk. Auto adapts reasoning depth; Manual keeps your selected
+effort. Substantive plans receive bounded completion guidance;
 small clerical edits can stay lightweight. Parallel review is conditional on
 the caller's tools and authority, and the router does not launch agents or
-certify their work. See [adaptive planning validation](docs/release/adaptive-planning.md).
+certify their work. Jev Sol and Jev Astra also receive planning and review
+guidance while keeping their selected model and adapting effort.
+See [adaptive planning validation](docs/release/adaptive-planning.md).
 
-**If Jev has a technical failure**, or the key/task is missing, Auto falls back to **GPT-6.1 Sol / high / Standard**. Manual preserves your selected effort on its technical route. A Sol/high label alone cannot distinguish a normal choice from fallback; the local diagnostics provide that detail. Kill switch, shadow mode and exhausted model quota have [separate handling](server/INSTALL.md).
+**If Jev has a technical failure**, or the key/task is missing, Auto falls back to **GPT-6.1 Sol / high / Standard**. Manual uses Sol with your selected effort. Jev Sol and Jev Astra keep their selected model and use high effort. A Sol/high label alone cannot distinguish a normal choice from fallback; the local diagnostics provide that detail. Kill switch, shadow mode and exhausted model quota have [separate handling](server/INSTALL.md).
 
-**Ultra requires your choice.** When independent parallel work could help, the router can recommend selecting a native Sol or Astra Ultra option. The current advisory is in Korean. It does not switch modes or enable delegation for you; client support and delegation permission are still required. Ultra can use more tokens.
+**Ultra requires your choice.** When independent parallel work could help, Auto/Manual can recommend selecting a native Sol or Astra Ultra option. The current advisory is in Korean. It does not switch modes or enable delegation for you; client support and delegation permission are still required. Ultra can use more tokens.
 
 ## Will it save money?
 
@@ -462,6 +497,9 @@ Start with `bin/jev-codex-router router doctor` if the model is missing or reque
 | --- | --- |
 | [Operations](server/INSTALL.md) | Install, diagnose, update and uninstall |
 | [Support](docs/SUPPORT.md) | Supported environment and validation limits |
+| [Current preview](docs/release/v0.1.0-preview.3.md) | Security fixes, validation and known limits |
+| [Four-mode routing](docs/release/fixed-model-routes-2026-10-10.md) | Fixed-model effort selection and failure behavior |
+| [README verification](docs/release/readme-refresh-2026-10-11.md) | Four-mode documentation and illustration checks |
 | [Costs](docs/COSTS.md) | What was measured and what remains unknown |
 | [Contributing](CONTRIBUTING.md) | Tests and contributions |
 | [System/integration/release tests](docs/release/system-integration-release-tests.md) | Stable acceptance cases and evidence requirements |
@@ -476,6 +514,8 @@ Start with `bin/jev-codex-router router doctor` if the model is missing or reque
 
 Based on [0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router), commit `8701ef788aa8cb0948f299538747fb01029d32b8`. Original MIT notices are retained in [LICENSE](LICENSE); the embedded router's source and separate license are recorded in [ROUTER_FORK.md](ROUTER_FORK.md).
 
-ZIRU adds the research-informed routing policy, current three-model selection, Sol/high technical fallback, visible route labels, manual Ultra advice and installation safeguards.
+ZIRU adds research-informed Auto/Manual routing, fixed Sol/Astra routes with
+adaptive effort, mode-specific technical fallback, visible route labels,
+manual Ultra advice and installation safeguards.
 
 For the experiments and practical AI-coding lessons behind this project, visit [ZIRU on Medium](https://medium.com/@jh.baek.sd). The [project sharing image](docs/assets/social-preview.png) is also included in this repository.
