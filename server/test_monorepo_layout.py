@@ -69,6 +69,10 @@ class EmbeddedRouterLayout(unittest.TestCase):
             self.assertEqual(models["jev/manual"]["displayName"], "Jev Codex Router")
             self.assertEqual([level["effort"] for level in models["jev/manual"]["reasoningLevels"]],
                              ["low", "medium", "high", "xhigh", "max"])
+            for mode in ("sol", "astra"):
+                self.assertEqual(models[f"jev/{mode}"]["serviceTiers"][0]["id"], "priority")
+            for mode in ("auto", "manual"):
+                self.assertNotIn("serviceTiers", models[f"jev/{mode}"])
             self.assertIn("example/model", slugs)
             self.assertEqual(user_models.stat().st_mode & 0o777, 0o600)
 
