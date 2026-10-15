@@ -9,10 +9,12 @@ from local_runtime import STATE
 from routing_policy import POLICY_VERSION
 
 
-def main(route: str = "jev/auto") -> None:
+def main(route: str = "jev/auto", speed: str = "default") -> None:
     targets = {"jev/sol": "gpt-6.1-sol", "jev/astra": "gpt-6-astra"}
     if route not in ("jev/auto", "jev/manual", *targets):
         raise ValueError("unsupported smoke route")
+    if speed != "default" and route not in targets:
+        raise ValueError("Fast smoke requires a fixed route")
     if not healthy():
         raise RuntimeError("local health check failed")
     health = http.client.HTTPConnection("127.0.0.1", 4319, timeout=5)
@@ -32,7 +34,7 @@ def main(route: str = "jev/auto") -> None:
         body = {"model": route, "input": [
             {"role": "user", "content": [{"type": "input_text", "text": "Reply only OK."}]}
         ], "stream": True, "reasoning": {"context": "all_turns"},
-            "parallel_tool_calls": False}
+            "parallel_tool_calls": False, "service_tier": speed}
         connection.request("POST", f"/_codex-router/{secret}/v1/responses",
                            json.dumps(body), {"Content-Type": "application/json",
                                               "x-openai-internal-codex-responses-lite": "true"})
@@ -52,12 +54,15 @@ def main(route: str = "jev/auto") -> None:
             if event.get("type") == "response.completed":
                 result["model"] = (event.get("response") or {}).get("model")
                 result["status"] = (event.get("response") or {}).get("status")
+                result["service_tier"] = (event.get("response") or {}).get("service_tier")
         if result["status"] != "completed":
             raise RuntimeError("no successful terminal response")
         if route in targets and (
             created_model != targets[route] or result["model"] != targets[route]
         ):
             raise RuntimeError("native response did not confirm the selected model")
+        if speed == "fast" and result.get("service_tier") not in ("fast", "priority"):
+            raise RuntimeError("native response did not confirm Fast service")
         print(json.dumps(result))
     finally:
         connection.close()
@@ -66,9 +71,10 @@ def main(route: str = "jev/auto") -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--route", choices=("auto", "manual", "sol", "astra"), default="auto")
+    parser.add_argument("--speed", choices=("default", "fast"), default="default")
     arguments = parser.parse_args()
     try:
-        main(f"jev/{arguments.route}")
+        main(f"jev/{arguments.route}", arguments.speed)
     except Exception as error:
         # Transport exceptions can carry request URLs: expose only their class.
         print(json.dumps({"ok": False, "error_type": type(error).__name__}))
