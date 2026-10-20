@@ -114,6 +114,7 @@ import { readNativeAliases } from "./native-alias.mjs";
 import { nativeContextVariantBase } from "./native-context-variants.mjs";
 import { readNativeRedirect } from "./native-redirect.mjs";
 import {
+  AUTO_REVIEW_MODEL,
   autoReviewFallbackEngaged,
   clearAutoReviewExhaustion,
   isAutoReviewModel,
@@ -4248,15 +4249,19 @@ async function handleResponses(request, response, requestUrl) {
       const historicalJevCompaction = (compactV1 || compactV2 || isNativeCheckpointSummary(payload))
         && request.headers["x-jev-desktop-recovery"] === "bridge-active"
         && ["jev/auto", "jev/manual", "jev/sol", "jev/astra"].includes(payload?.model);
+      // Provider headers also accompany Codex's dedicated approval requests.
+      // Keep the exact reviewer slug on the existing native approval path;
+      // its policy input and verdict must never become an ordinary Jev turn.
+      const nativeApproval = payload?.model === AUTO_REVIEW_MODEL;
       if (!["auto", "manual", "sol", "astra"].includes(jevMode)
-          || (payload?.model !== "gpt-6.1-sol" && !historicalJevCompaction)) {
+          || (payload?.model !== "gpt-6.1-sol" && !historicalJevCompaction && !nativeApproval)) {
         writeJson(response, 400, { error: {
           type: "invalid_request_error", code: "invalid_jev_selection",
           message: "Jev selection requires one auto/manual/sol/astra mode and its supported native model.",
         } });
         return;
       }
-      if (jevMode === "manual" && isNativeCheckpointSummary(payload)
+      if (!nativeApproval && jevMode === "manual" && isNativeCheckpointSummary(payload)
           && payload.reasoning?.effort === "auto") {
         try {
           const effort = manualCheckpointEffort(payload, threadId => new PrivateRouteState(
@@ -4271,7 +4276,7 @@ async function handleResponses(request, response, requestUrl) {
           return;
         }
       }
-      payload.model = `jev/${jevMode}`;
+      if (!nativeApproval) payload.model = `jev/${jevMode}`;
       delete request.headers["x-jev-selection-mode"];
     }
     controller.signal.throwIfAborted();
