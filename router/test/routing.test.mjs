@@ -8483,6 +8483,84 @@ test("a native reviewer that answers keeps every approval native, deny included 
   }
 });
 
+for (const mode of ["auto", "manual", "sol", "astra"]) {
+test(`Jev ${mode} preserves native approval routing and rejection boundaries`, async () => {
+  const nativeRequests = [];
+  const verdict = { decision: "deny", reason: "The requested action is not authorized." };
+  const native = await mockServer(async (request, response) => {
+    nativeRequests.push({ body: await bodyJson(request), headers: request.headers });
+    json(response, 200, verdict);
+  });
+  const gatewayRequests = [];
+  const gateway = await mockServer(async (request, response) => {
+    gatewayRequests.push(await bodyJson(request));
+    json(response, 200, { decision: "allow" });
+  });
+  const stateDir = mkdtempSync(path.join(os.tmpdir(), "jev-native-review-"));
+  const routerPort = await openPort();
+  const router = run("router.mjs", {
+    CODEX_HOME: path.join(stateDir, "codex-home"),
+    CODEX_ROUTER_PORT: String(routerPort),
+    CODEX_NATIVE_BASE_URL: `http://127.0.0.1:${native.port}/backend-api/codex`,
+    CODEX_ROUTER_GATEWAY_BASE_URL: `http://127.0.0.1:${gateway.port}/v1`,
+    CODEX_ROUTER_STATE_DIR: stateDir,
+    CODEX_ROUTER_QUIET: "1",
+  });
+  const payload = {
+    model: "codex-auto-review",
+    instructions: "Review the proposed action against the approval policy.",
+    input: [{ role: "user", content: "Evaluate the proposed read-only command." }],
+    reasoning: { effort: "low" },
+    stream: false,
+  };
+  const send = (changes = {}, headers = {}, base = routerBase(routerPort)) => fetch(`${base}/responses`, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer CODEX_CALLER_SECRET", "Content-Type": "application/json",
+      "x-jev-selection-mode": mode, "x-jev-desktop-recovery": "bridge-active", ...headers,
+    },
+    body: JSON.stringify({ ...payload, ...changes }),
+  });
+  try {
+    await waitFor(`${routerBase(routerPort)}/models`, router);
+    for (const marker of ["invalid", "auto, manual", ""]) {
+      const refused = await send({}, { "x-jev-selection-mode": marker });
+      assert.equal(refused.status, 400);
+      assert.equal((await refused.json()).error.code, "invalid_jev_selection");
+    }
+    for (const model of ["gpt-6-astra", "codex-auto-review-other", " codex-auto-review "]) {
+      const refused = await send({ model });
+      assert.equal(refused.status, 400);
+      assert.equal((await refused.json()).error.code, "invalid_jev_selection");
+    }
+    const recovery = await send({}, { "x-jev-desktop-recovery": "required" });
+    assert.equal(recovery.status, 400);
+    assert.equal((await recovery.json()).error.code, "jev_desktop_recovery_required");
+    const browser = await send({}, { Origin: "https://example.com" });
+    assert.equal(browser.status, 403);
+    const unauthenticated = await send({}, {}, `http://127.0.0.1:${routerPort}/v1`);
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(nativeRequests.length, 0);
+    assert.equal(gatewayRequests.length, 0);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const reviewed = await send();
+      assert.equal(reviewed.status, 200, await reviewed.clone().text());
+      assert.deepEqual(await reviewed.json(), verdict, "A deny must reach the caller unchanged");
+      assert.deepEqual(nativeRequests.at(-1).body, payload, "Approval policy and input must stay intact");
+      assert.equal(nativeRequests.at(-1).headers["x-jev-selection-mode"], undefined);
+      assert.equal(nativeRequests.at(-1).headers["x-jev-desktop-recovery"], undefined);
+    }
+    assert.equal(nativeRequests.length, 2, "Each approval gets exactly one native review");
+    assert.equal(gatewayRequests.length, 0, "A deny must never be sent to Jev or another reviewer");
+  } finally {
+    await stopChild(router);
+    await closeServer(native.server);
+    await closeServer(gateway.server);
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+}
+
 test("router refuses a provider-prefixed slug it has no route for instead of forwarding it to ChatGPT (#689)", async () => {
   const nativeRequests = [];
   const native = await mockServer(async (request, response) => {
