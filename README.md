@@ -374,13 +374,48 @@ Jev/schema/key/task failures use the same selected model/high. Native errors
 stop without switching models. Automatic quota state is rechecked once per
 fixed-route request; manual dry state remains authoritative. Kill skips Jev and
 uses selected-model/high; shadow records the judgment but also executes
-selected-model/high. Kill wins when both are enabled. All routes use standard
-speed, and fixed routes do not add Ultra advice.
+selected-model/high. Kill wins when both are enabled. Auto and Manual use Standard speed. Fixed Sol/Astra routes default to Standard
+and offer opt-in Fast serving independently of Jev-selected effort. Fixed routes
+do not add Ultra advice.
 
 The installer upgrades the owned Desktop provider block from two entries to
 four while preserving official defaults. Verify the fixed routes with
 `python3 server/smoke.py --route sol` and `python3 server/smoke.py --route astra`.
 See [fixed-model verification](docs/release/fixed-model-routes-2026-10-10.md).
+
+### Fast speed for Sol and Astra
+
+Select **Jev Sol Router** or **Jev Astra Router**, then choose **Fast** in the
+Desktop speed control when the native model advertises it. Standard remains the
+default. Fast changes serving speed; Jev still chooses reasoning effort. Auto and
+Manual remain Standard-only.
+
+For CLI sessions, enable the native Fast feature and opt in explicitly:
+
+```sh
+codex -p jev -m jev/sol -c features.fast_mode=true -c service_tier='"fast"'
+codex -p jev -m jev/astra -c features.fast_mode=true -c service_tier='"fast"'
+```
+
+Use `/fast` to toggle speed where supported. Choose Standard in Desktop or use
+`service_tier='"default"'` for Standard CLI service. Availability and increased
+usage depend on your account; see [Codex speed](https://learn.chatgpt.com/docs/agent-configuration/speed).
+
+A requested Fast tier is not proof of Fast execution. Logs retain the requested
+tier and the terminal response's served tier separately; omitted served metadata
+remains unknown. A backend downgrade to Standard stays visible. Invalid tiers
+are rejected before inference on fixed routes. Fixed routes do not switch models
+or retry at a different speed to rescue a Fast refusal.
+
+After installation, a live Fast check can consume increased usage:
+
+```sh
+python3 server/smoke.py --route sol --speed fast
+python3 server/smoke.py --route astra --speed fast
+```
+
+These checks fail if the backend does not confirm Fast service. See
+[Fast validation evidence](docs/release/fixed-fast-speed.md) for verification limits.
 
 ## What you'll see
 

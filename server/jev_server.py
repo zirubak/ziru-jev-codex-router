@@ -83,6 +83,7 @@ ladder (low/high/max): a low step stays low, medium and high become high, and
 xhigh or above become max.
 """
 import codecs
+from service_tier import requested_speed, served_speed
 import hashlib
 import http.client
 import json
@@ -1467,7 +1468,7 @@ def _astra_configuration_eligible(payload):
     return any(isinstance(item, dict) and item.get("role") == "user" for item in items)
 
 
-def apply_route_payload(payload, model, effort, original_reasoning, injected_update=None):
+def apply_route_payload(payload, model, effort, original_reasoning, injected_update=None, service_tier="default"):
     """Apply one attempt's route while preserving the stable request prefix.
 
     Astra can change reasoning for the next user message through a
@@ -1509,7 +1510,7 @@ def apply_route_payload(payload, model, effort, original_reasoning, injected_upd
         reasoning = dict(original_reasoning) if isinstance(original_reasoning, dict) else {}
         reasoning["effort"] = effort
         payload["reasoning"] = reasoning
-    payload["service_tier"] = "default"
+    payload["service_tier"] = service_tier
     payload["stream"] = True
     return next_update, transport
 
@@ -1551,6 +1552,7 @@ class SummaryMarker:
         self.transport_error = None
         self.usage = None
         self.terminal_type = None
+        self.served_speed = None
 
     @staticmethod
     def _emit(lines):
@@ -1769,6 +1771,7 @@ class SummaryMarker:
             self._flush_held(out)
             response = data.get("response")
             self.terminal_type = dtype
+            self.served_speed = served_speed(response)
             self.usage = usage_counts(response.get("usage")) if isinstance(response, dict) else None
             if (
                 self._response_id
@@ -2039,6 +2042,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             selection = resolve_selection(payload)
+            selected_speed = requested_speed(payload, selection.fixed_model)
         except ValueError as exc:
             return self._json(400, {"error": {"message": str(exc)}})
         # Our own answer signatures never travel back upstream (see
@@ -2277,7 +2281,8 @@ class Handler(BaseHTTPRequestHandler):
                     for item in payload["input"]
                 ]
             injected_update, effort_transport = apply_route_payload(
-                payload, model, effort, original_reasoning, injected_update
+                payload, model, effort, original_reasoning, injected_update,
+                selected_speed if model == selection.fixed_model else "default",
             )
 
         if not no_fallback:
@@ -2410,7 +2415,9 @@ class Handler(BaseHTTPRequestHandler):
             "depth": depth,
             "model": model,
             "effort": effort,
-            "speed": speed,
+            "speed": observed_attempt.get("speed") if observed_attempt else speed,
+            "requested_speed": selected_speed,
+            "served_speed": observed_attempt.get("served_speed") if observed_attempt else None,
             "native": native_model,
             "dry": dry_reason,
             "routing_scope": decision.get("lease") if decision else "call",
@@ -2463,7 +2470,9 @@ class Handler(BaseHTTPRequestHandler):
         out_kind = ""
         ctype = ""
         attempt = {"model": model, "effort": effective_effort,
-                   "speed": payload.get("service_tier"), "status": None,
+                   "requested_speed": payload.get("service_tier"),
+                   "served_speed": None,
+                   "speed": "default" if payload.get("service_tier") == "default" else None, "status": None,
                    "http_status": None, "completion": None,
                    "terminal_type": None, "transport_error": None, "usage": None}
         self._attempts.append(attempt)
@@ -2616,6 +2625,9 @@ class Handler(BaseHTTPRequestHandler):
                         attempt["completion"] = "interrupted_precontent"
                         attempt["transport_error"] = "upstream_eof"
                     if assembled is not None:
+                        attempt["served_speed"] = served_speed(assembled)
+                        if attempt["served_speed"] is not None:
+                            attempt["speed"] = attempt["served_speed"]
                         attempt["usage"] = usage_counts(assembled.get("usage"))
                         response_status = assembled.get("status")
                         if response_status in ("completed", "incomplete", "failed"):
@@ -2644,6 +2656,9 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             attempt["status"] = status
             if markerer is not None:
+                attempt["served_speed"] = markerer.served_speed
+                if markerer.served_speed is not None:
+                    attempt["speed"] = markerer.served_speed
                 attempt["usage"] = markerer.usage
                 attempt["terminal_type"] = markerer.terminal_type
                 attempt["transport_error"] = (

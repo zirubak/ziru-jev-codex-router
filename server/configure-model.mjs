@@ -53,6 +53,7 @@ export const JEV_SOL_MODEL = Object.freeze({
   displayName: "Jev Sol Router",
   description: "GPT-6.1 Sol with Jev-selected reasoning effort; the selected effort is ignored.",
   priority: 97,
+  serviceTiers: [{ id: "priority", name: "Fast", description: "Faster serving with increased usage; opt-in." }],
   defaultEffort: "high",
 });
 

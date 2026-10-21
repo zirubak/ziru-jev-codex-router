@@ -9514,6 +9514,7 @@ async function jevCollaborationFixture(t, handler, { external = false, cooled = 
     provider: "jev", listed: true, displayName: "Jev fixture", description: "Jev collaboration fixture.", compHash: `jev-${mode}-test`,
     priority: 95, defaultEffort: "high", reasoningLevels: [{ effort: "high", description: "High" }],
     contextWindow: 258400, autoCompact: 219640, inputModalities: ["text", "image"],
+    ...(["sol", "astra"].includes(mode) ? { serviceTiers: [{ id: "priority", name: "Fast" }] } : {}),
   }));
   if (external) {
     fixtures.push({ ...fixtures[0], slug: "external-fixture/model", gatewayModel: "external-model",
@@ -14158,3 +14159,27 @@ test("an in-contract Chat route still carries its reasoning as thinking", async 
     rmSync(stateDir, { recursive: true, force: true });
   }
 });
+
+for (const mode of ["auto", "manual", "sol", "astra"]) {
+  test(`Jev speed transport opt-in mode=${mode}`, async (t) => {
+    const bodies = [];
+    const fixture = await jevCollaborationFixture(t, async (request, response) => {
+      bodies.push(await bodyJson(request));
+      json(response, 200, { id: "speed", status: "completed", output: [] });
+    });
+    for (const tier of ["fast", "priority", "default"]) {
+      const response = await fixture.request({ model: `jev/${mode}`, service_tier: tier,
+        input: "Synthetic speed transport check", stream: false });
+      assert.equal(response.status, 200, await response.text());
+      assert.equal(bodies.at(-1).service_tier,
+        ["sol", "astra"].includes(mode) && tier !== "default" ? "priority" : undefined);
+    }
+    if (["sol", "astra"].includes(mode)) {
+      for (const tier of ["ultrafast", "", {}, []]) {
+        const response = await fixture.request({ model: `jev/${mode}`, service_tier: tier, input: "Synthetic invalid tier" });
+        assert.equal(response.status, 400);
+      }
+      assert.equal(bodies.length, 3);
+    }
+  });
+}

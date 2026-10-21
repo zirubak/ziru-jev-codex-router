@@ -490,10 +490,11 @@ def summarize(entries, days, stats, log_path, backtest_path=None, policy=None):
         row["turns"] += 1
         row["total_ms"].append(entry.get("total_ms"))
         speed = entry.get("speed")
-        if model == LUNA and not speed:
+        unconfirmed_fast = entry.get("requested_speed") in ("fast", "priority") and entry.get("served_speed") is None
+        if model == LUNA and not speed and "requested_speed" not in entry:
             speed = "priority"
             legacy_speed_assumptions += 1
-        estimate = turn_cost(model, speed=speed)
+        estimate = None if unconfirmed_fast else turn_cost(model, speed=speed)
         unit = estimate / turn_cost(LUNA) if estimate is not None else None
         if unit is None:
             unpriced_turns += 1

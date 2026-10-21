@@ -26,7 +26,7 @@ function refuse(message) {
   throw new JevBridgeError(-32000, `Jev provider switch: ${message}`);
 }
 
-function modelEntries() {
+function modelEntries(nativeModels) {
   return MODES.map((mode) => ({
     id: `jev/${mode}`, model: `jev/${mode}`,
     displayName: mode === 'sol' ? 'Jev Sol Router' : mode === 'astra' ? 'Jev Astra Router'
@@ -35,6 +35,9 @@ function modelEntries() {
       ? 'Jev chooses the model and preserves your selected reasoning effort.'
       : mode === 'auto' ? 'Jev chooses the model and reasoning effort; the selected effort is ignored.'
         : `${mode === 'sol' ? 'GPT-6.1 Sol' : 'GPT-6 Astra'} with Jev-selected reasoning effort; the selected effort is ignored.`,
+    serviceTiers: ['sol', 'astra'].includes(mode)
+      ? (nativeModels.get(mode === 'sol' ? CARRIER : 'gpt-6-astra')?.serviceTiers ?? [])
+        .filter((tier) => ['priority', 'fast'].includes(tier.id)) : [],
     hidden: false, isDefault: false,
     defaultReasoningEffort: mode === 'manual' ? 'medium' : 'high',
     supportedReasoningEfforts: EFFORTS.map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
@@ -64,6 +67,7 @@ export class DesktopProviderBridge {
     this.statuses = new Map();
     this.blocked = new Set();
     this.carrierAvailable = false;
+    this.nativeModels = new Map();
   }
 
   async hasCarrier() {
@@ -72,6 +76,7 @@ export class DesktopProviderBridge {
     let cursor;
     do {
       const result = await this.request('model/list', { includeHidden: true, ...(cursor ? { cursor } : {}) });
+      for (const model of result.data ?? []) this.nativeModels.set(model.model, model);
       if (result.data?.some((entry) => entry.model === CARRIER)) {
         this.carrierAvailable = true;
         return true;
@@ -338,9 +343,11 @@ export class DesktopProviderBridge {
   async handle(method, params = {}) {
     if (method === 'model/list') {
       const result = await this.request(method, params);
+      if (params.cursor == null) this.nativeModels.clear();
+      for (const model of result.data ?? []) this.nativeModels.set(model.model, model);
       if (result.data?.some((entry) => entry.model === CARRIER)) this.carrierAvailable = true;
       if (result.nextCursor != null || !Array.isArray(result.data) || !await this.hasCarrier()) return result;
-      return { ...result, data: [...result.data.filter((model) => !isJev(model.model)), ...modelEntries()] };
+      return { ...result, data: [...result.data.filter((model) => !isJev(model.model)), ...modelEntries(this.nativeModels)] };
     }
     if (method === 'config/batchWrite' || method === 'config/value/write') return this.defaults(method, params);
     if (method === 'thread/start' || method === 'thread/fork') {

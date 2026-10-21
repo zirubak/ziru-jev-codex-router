@@ -425,14 +425,16 @@ function fetchForRoute(route, url, init) {
 // candidate or a compaction for another route never inherits a tier it did not
 // offer.
 function applyRoutedServiceTier(body, payload, route) {
-  if (!route?.serviceTiers?.some((entry) => entry?.id === payload.service_tier)) {
+  const fixedFastAlias = ["jev/sol", "jev/astra"].includes(route?.slug) && payload.service_tier === "fast";
+  const tier = fixedFastAlias ? "priority" : payload.service_tier;
+  if (!route?.serviceTiers?.some((entry) => entry?.id === tier)) {
     delete body.service_tier;
-  }
+  } else if (fixedFastAlias) body.service_tier = tier;
   if (route?.slug !== "grok-oauth/grok-4.6") return body;
-  const tier = knownServiceTier(payload.service_tier);
+  const grokTier = knownServiceTier(payload.service_tier);
   // Locked LiteLLM loses the Responses service_tier argument at its Chat
   // bridge. extra_body reaches the forwarder without changing other routes.
-  if (tier) body.extra_body = { ...(body.extra_body || {}), service_tier: tier };
+  if (grokTier) body.extra_body = { ...(body.extra_body || {}), service_tier: grokTier };
   return body;
 }
 const configuredEmptyCompletionPreludeBytes = Number(
@@ -4376,6 +4378,12 @@ async function handleResponses(request, response, requestUrl) {
     // always worked -- but an idle --no-discovery install answers locally.
     if (!route && discoveryDisabled()) {
       writeIdleNoProviderError(response);
+      return;
+    }
+    if (["jev/sol", "jev/astra"].includes(route?.slug) && payload.service_tier != null
+        && !["default", "fast", "priority"].includes(payload.service_tier)) {
+      writeJson(response, 400, { error: { type: "invalid_request_error", code: "invalid_service_tier",
+        message: "Jev fixed routes support Standard or Fast service." } });
       return;
     }
     if (route) assertGatewayRequestPayload(payload, route, request);
