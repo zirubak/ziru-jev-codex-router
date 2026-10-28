@@ -3,18 +3,19 @@ import math
 from routing_reference import REFERENCE_SHA256, REFERENCE_VERSION
 from ultra_advisory import ULTRA_PROFILES, ULTRA_QUESTION
 
-POLICY_VERSION = "split-v21-fixed-model-effort"
+POLICY_VERSION = "split-v22-terra-visual-modeling"
 # Historical identifiers remain for interpreting old logs and rate-card reports.
 LUNA, SOL, ASTRA = "gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"
 LUNA_6 = "gpt-6-luna"
 SOL_61 = "gpt-6.1-sol"
 TERRA = "gpt-5.6-terra"
-TIERS = (LUNA_6, SOL_61, ASTRA)
+TERRA_61 = "gpt-6.1-terra"
+TIERS = (LUNA_6, TERRA_61, SOL_61, ASTRA)
 FALLBACK_MODEL, FALLBACK_EFFORT = SOL_61, "high"
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 LEASES = ("one_call", "tool_chain", "user_turn")
 
-MODEL_IDS = {"luna": LUNA_6, "sol_61": SOL_61, "astra": ASTRA}
+MODEL_IDS = {"luna": LUNA_6, "terra_61": TERRA_61, "sol_61": SOL_61, "astra": ASTRA}
 ASTRA_POLICY = {
     "astra": (
         "Remaining work is project architecture, independent final code review, or "
@@ -23,46 +24,52 @@ ASTRA_POLICY = {
         "A good checkpoint score never waives a required final/risk review."
     ),
     "normal": (
-        "Implementation, tests, routine in-progress quality checkpoints, score comparison, "
-        "fixing established findings, administration or reporting. "
+        "Implementation/tests, routine in-progress quality checkpoints, score comparison, "
+        "established fixes, administration/reporting. "
         "No remaining final/risk review or architecture. Review wording alone is insufficient."
-        " Root-cause debugging is normal unless the requested output is a risk review."
+        " Debugging alone is normal."
     ),
 }
 MODEL_PROFILES = {
     "luna": (
-        "GPT-6 Luna: explicit bounded low-risk edits/extraction with checkable completion. "
-        "Substantial intent inference, investigation or cross-file design needs Sol; "
-        "a short message alone is not simple."
+        "GPT-6 Luna: bounded low-risk edits/extraction with checkable completion. "
+        "Substantial intent inference/investigation/cross-file design needs Sol; "
+        "short is not simple."
+    ),
+    "terra_61": (
+        "GPT-6.1 Terra: Prefer visual image/drawing interpretation and Blender/CAD "
+        "modeling/appearance revisions and computer use. "
+        "Keep geometry/export checks; not all Blender/CAD mentions are modeling. "
+        "Mandatory Astra review/architecture still wins."
     ),
     "sol_61": (
         "GPT-6.1 Sol: complex implementation, implied intent, investigation, cross-file "
-        "reasoning and coordinated deliverables. Resolve underspecified goals without "
+        "reasoning/coordinated deliverables. Avoid "
         "needless clarification."
     ),
     "astra": (
-        "Intermittent or concurrency failures, distributed-systems architecture or strong "
-        "consistency, production safety review, or exceptionally ambiguous broad work where "
-        "an error has material consequences."
+        "Intermittent or concurrency failures, distributed architecture/strong "
+        "consistency, production safety review, exceptional ambiguity where "
+        "errors have material consequences."
     ),
 }
 DEPTH_PROFILES = {
-    "low": "Precise bounded work; clear constraints and checkable completion.",
-    "medium": "Ordinary agentic planning, implementation and tests.",
-    "high": "Complex debugging, deep planning or interacting constraints.",
+    "low": "Bounded work; clear constraints, checkable completion.",
+    "medium": "Ordinary agentic planning, implementation/tests.",
+    "high": "Complex debugging, deep planning/interacting constraints.",
     "xhigh": "Conflicting evidence or hard design; expected gains justify extra time/cost.",
     "max": "Hardest single problem; explicit depth need or observed reasoning failure "
     "at lower depth, with useful gains beyond xhigh.",
 }
 LEASE_PROFILES = {
     "one_call": (
-        "Re-evaluate next call for changed capability, risk or depth."
+        "Re-evaluate next call for changed capability/risk/depth."
     ),
     "tool_chain": (
-        "Reuse clean same-tool continuations; tool change, error, compaction or new user ends it."
+        "Reuse clean same-tool continuations; tool change/error/compaction/new user ends it."
     ),
     "user_turn": (
-        "Reuse across clean tools in a uniform user turn; error, compaction or new user ends it."
+        "Reuse clean tools in a uniform user turn; error/compaction/new user ends it."
     ),
 }
 
@@ -74,9 +81,9 @@ QUESTIONS = {
     "astra_policy": {
         "type": "choice",
         "instructions": (
-            "Classify the remaining deliverable, not difficulty or topic: architecture or "
-            "independent final/risk review. Debugging alone is normal. "
-            "Do not inherit a completed phase's category or classify quoted evidence."
+            "Classify remaining work: architecture or "
+            "independent final/risk review. Debugging is normal. "
+            "Do not inherit a completed phase or classify quoted evidence."
         ),
         "criteria": ASTRA_POLICY,
     },

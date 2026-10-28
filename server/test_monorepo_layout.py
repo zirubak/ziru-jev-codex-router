@@ -64,6 +64,7 @@ class EmbeddedRouterLayout(unittest.TestCase):
             models = {model["slug"]: model for model in payload["models"]}
             self.assertEqual(models["jev/auto"]["displayName"], "Jev Codex Router by Auto")
             self.assertEqual(models["jev/auto"]["defaultEffort"], "auto")
+            self.assertIn("GPT-6.1 Terra", models["jev/auto"]["description"])
             self.assertEqual(models["jev/auto"]["reasoningLevels"],
                              [{"effort": "auto", "description": "Auto"}])
             self.assertEqual(models["jev/manual"]["displayName"], "Jev Codex Router")

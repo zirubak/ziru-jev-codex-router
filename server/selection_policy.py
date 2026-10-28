@@ -9,7 +9,7 @@ FIXED_ROUTES = {
     for slug, model in (("sol", "gpt-6.1-sol"), ("astra", "gpt-6-astra"))
     for alias in (slug, f"jev-{slug}", f"jev/{slug}")
 }
-SELECTION_POLICY_VERSION = "split-v21-fixed-model-effort"
+SELECTION_POLICY_VERSION = "split-v22-terra-visual-modeling"
 
 
 @dataclass(frozen=True)
