@@ -62,7 +62,7 @@ import sys
 from contextlib import ExitStack
 from itertools import chain
 from local_runtime import STATE
-from routing_policy import ASTRA, LUNA, POLICY_VERSION, SOL, SOL_61, TERRA, TIERS
+from routing_policy import ASTRA, LUNA, POLICY_VERSION, SOL, SOL_61, TERRA, TERRA_61, TIERS
 
 LIVE_LOG = os.path.join(STATE, "jev-router-live.jsonl")
 BACKTEST_STATE = os.path.join(STATE, "jev-backtest.json")
@@ -93,6 +93,7 @@ SHORT = {
     "gpt-6-luna": "luna_6",
     LUNA: "luna",
     TERRA: "terra",
+    TERRA_61: "terra_61",
     SOL: "sol",
     SOL_61: "sol_61",
     ASTRA: "astra",

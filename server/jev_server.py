@@ -101,7 +101,7 @@ from local_runtime import (
 )
 
 from routing_policy import (ASTRA, EFFORTS, FALLBACK_EFFORT, FALLBACK_MODEL, LUNA, LUNA_6,
-                            QUESTIONS, SOL, SOL_61, TERRA,
+                            QUESTIONS, SOL, SOL_61, TERRA, TERRA_61,
                             TIERS, decision_from_answers, route)
 from routing_reference import REFERENCE_SHA256, REFERENCE_VERSION, routing_reference
 from ultra_advisory import REASONS as ULTRA_REASONS, recommendation as ultra_recommendation
@@ -1003,6 +1003,7 @@ ROUTE_GLYPHS = {
     "gpt-5.6-luna": ("luna", "⚡"),      # cheap tier, adaptive thinking
     "gpt-5.6-sol": ("sol", "🧠"),        # reasoning workhorse
     SOL_61: ("sol_61", "\U0001f9e0"),
+    TERRA_61: ("terra_61", "\U0001f30d"),
     "gpt-6-astra": ("astra", "🚀"),      # frontier
     "gpt-5.6-terra": ("terra", "🌍"),
 }

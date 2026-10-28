@@ -10,7 +10,7 @@ Current public prerelease: **[v0.1.0-preview.3](https://github.com/zirubak/ziru-
 
 [한국어](README.ko.md) · [Install](#install) · [Examples](#what-youll-see) · [How it works](#how-it-works) · [Star this project](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
-ZIRU exposes **Jev Codex Router** through the explicit `codex -p jev` profile. Select that profile and keep working as usual: ask a question, fix a bug, or build a feature. In Auto, Jev from TypeSafe chooses between **GPT-6 Luna, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason. Manual keeps the effort you select; Jev Sol and Jev Astra keep the model you select.
+ZIRU exposes **Jev Codex Router** through the explicit `codex -p jev` profile. Select that profile and keep working as usual: ask a question, fix a bug, or build a feature. In Auto, Jev from TypeSafe chooses between **GPT-6 Luna, GPT-6.1 Terra, GPT-6.1 Sol and GPT-6 Astra**, along with how deeply the model should reason. Manual keeps the effort you select; Jev Sol and Jev Astra keep the model you select.
 
 The aim is to use enough reasoning to do the job well, while avoiding unnecessary token use across coding, tests, reviews and corrections. A small edit and a final security review should not need the same approach.
 
@@ -62,8 +62,14 @@ does not guarantee a correct answer or a larger model.
 ### Auto: describe the work
 
 Choose **Jev Codex Router Auto** and ask normally. Jev considers difficulty,
-failure risk and remaining work, then chooses Luna, Sol or Astra together with
+failure risk and remaining work, then chooses Luna, Terra, Sol or Astra together with
 an effort from low through max. The choice can change on continuations after tools.
+
+Terra is preferred for visual image/drawing interpretation and Blender/CAD modeling
+and appearance revisions. This is a semantic preference, not a keyword override:
+geometry/export checks remain required, and mandatory architecture/final/risk review
+still uses Astra in Auto/Manual; fixed Sol/Astra routes preserve the selected model.
+See the [Terra routing evidence](docs/release/terra-visual-modeling.md).
 
 “Change this button label” and “Find and fix this login-permission bug” need
 different judgments. Auto chooses a combination for the work. These are examples,
@@ -77,7 +83,7 @@ to describe the task without managing reasoning depth yourself.
 
 Choose **Jev Codex Router Manual**, set an effort, then send your request.
 Jev selects a model supporting that effort; execution preserves your selected
-effort. **Manual does not mean manually picking Luna, Sol or Astra.**
+effort. **Manual does not mean manually picking Luna, Terra, Sol or Astra.**
 
 | Effort | Example reason to choose it |
 | --- | --- |
@@ -426,6 +432,7 @@ Labels appear with the first text of each assistant message; they are not shown 
 
 | Automatic candidate | Intended role | Available efforts |
 | --- | --- | --- |
+| GPT-6.1 Terra | Visual image/drawing interpretation and Blender/CAD modeling | low · medium · high · xhigh · max |
 | GPT-6 Luna | Small, bounded changes with checkable results | low · medium · high · xhigh · max |
 | GPT-6.1 Sol | General implementation and debugging | low · medium · high · xhigh · max |
 | GPT-6 Astra | Architecture, independent final review and risk-focused review | low · medium · high · xhigh · max |
@@ -478,7 +485,7 @@ flowchart TD
     J -->|Bounded decision dossier| T[TypeSafe direct API]
     T -->|Model and effort decision| J
     J -->|Full execution request with chosen model| R
-    R -->|Shared ChatGPT session| O[OpenAI: Luna / Sol / Astra]
+    R -->|Shared ChatGPT session| O[OpenAI: Luna / Terra / Sol / Astra]
     O -->|Response stream| R
     R -->|Response for Jev request| J
     J -->|Optional route label and response| R
@@ -514,7 +521,7 @@ Start with `bin/jev-codex-router router doctor` if the model is missing or reque
 
 Based on [0xNatoshi/jev-codex-router](https://github.com/0xNatoshi/jev-codex-router), commit `8701ef788aa8cb0948f299538747fb01029d32b8`. Original MIT notices are retained in [LICENSE](LICENSE); the embedded router's source and separate license are recorded in [ROUTER_FORK.md](ROUTER_FORK.md).
 
-ZIRU adds research-informed Auto/Manual routing, fixed Sol/Astra routes with
+ZIRU adds research-informed four-model Auto/Manual routing, fixed Sol/Astra routes with
 adaptive effort, mode-specific technical fallback, visible route labels,
 manual Ultra advice and installation safeguards.
 

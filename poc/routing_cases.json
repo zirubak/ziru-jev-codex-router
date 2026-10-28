@@ -356,5 +356,84 @@
       "xhigh"
     ],
     "rationale": "Repeated failed guesses leave a causal investigation despite a small diff. Optimize completion tokens including verification and rework without skipping required checks; this range is a local hypothesis."
+  },
+  {
+    "id": "visual-blender-photo",
+    "input": [
+      {
+        "role": "user",
+        "content": "Use these reference photos to build and revise the object silhouette and proportions in Blender."
+      }
+    ],
+    "models": [
+      "gpt-6.1-terra"
+    ],
+    "policy": "normal",
+    "rationale": "Visual modeling preference; native geometry and export checks remain required.",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "visual-cad-drawing",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read this dimensioned technical drawing and build a matching SolidCraft CAD part. Reopen and inspect the native part and STEP/STL exports."
+      }
+    ],
+    "models": [
+      "gpt-6.1-terra"
+    ],
+    "policy": "normal",
+    "rationale": "Drawing interpretation and CAD execution are the Terra visual modeling target.",
+    "efforts": [
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "cad-risk-review",
+    "input": [
+      {
+        "role": "user",
+        "content": "Perform the independent final security review of the CAD plugin authentication and permissions."
+      }
+    ],
+    "models": [
+      "gpt-6-astra"
+    ],
+    "policy": "astra",
+    "rationale": "CAD topic cannot replace the mandatory final/risk review route.",
+    "efforts": [
+      "high",
+      "xhigh",
+      "max"
+    ]
+  },
+  {
+    "id": "cad-approved-export",
+    "input": [
+      {
+        "role": "user",
+        "content": "The CAD design and geometry are approved. Only export the existing part to STEP using the supplied command and check the file exists."
+      }
+    ],
+    "models": [
+      "gpt-6-luna",
+      "gpt-6.1-terra",
+      "gpt-6.1-sol"
+    ],
+    "policy": "normal",
+    "rationale": "Approved export stays adaptive rather than receiving a mandatory visual-modeling override.",
+    "efforts": [
+      "low",
+      "medium"
+    ]
   }
 ]

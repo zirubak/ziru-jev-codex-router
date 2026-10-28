@@ -21,15 +21,15 @@ class RoutingReference(unittest.TestCase):
                                         backtest_path="/fixture/no-backtest")
 
     def test_unknown_current_prices_never_become_free_native_savings(self) -> None:
-        result = self.summarize(["gpt-6-luna", "gpt-6.1-sol"])
+        result = self.summarize(["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"])
         cost = result["native_cost"]
         self.assertIsNone(cost["savings_vs_sol_pct"])
         self.assertEqual(cost["priced_turns"], 0)
-        self.assertEqual(cost["unpriced_turns"], 2)
+        self.assertEqual(cost["unpriced_turns"], 3)
         self.assertIsNone(cost["savings_vs_astra_pct"])
         rendered = report_routing.render_text(result)
         self.assertNotIn("100.0% vs all-sol", rendered)
-        self.assertIn("2 unpriced", rendered)
+        self.assertIn("3 unpriced", rendered)
 
     def test_native_comparison_uses_the_same_priced_population(self) -> None:
         priced = self.summarize(["gpt-6-astra"])["native_cost"]
@@ -41,7 +41,7 @@ class RoutingReference(unittest.TestCase):
         self.assertEqual(mixed["unpriced_turns"], 1)
 
     def test_current_candidates_exclude_every_legacy_route(self) -> None:
-        self.assertEqual(TIERS, ("gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"))
+        self.assertEqual(TIERS, ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"))
         self.assertEqual(set(MODEL_IDS.values()), set(TIERS))
         for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-sol"):
             with self.subTest(model=model), self.assertRaises(ValueError):

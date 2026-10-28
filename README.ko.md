@@ -10,7 +10,7 @@
 
 [English](README.md) · [설치](#설치) · [응답-예제](#이렇게-보입니다) · [동작-구조](#동작-구조) · [프로젝트에 스타 남기기](https://github.com/zirubak/ziru-jev-codex-router/stargazers)
 
-ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합니다. 이 프로필을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. Auto에서는 TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다. Manual은 사용자가 정한 effort를, Jev Sol과 Jev Astra는 사용자가 고른 모델을 유지합니다.
+ZIRU는 `codex -p jev` 명시적 프로필로 **Jev Codex Router**를 제공합니다. 이 프로필을 선택하고 평소처럼 질문하거나, 버그를 고치거나, 기능을 만들어 달라고 요청하면 됩니다. Auto에서는 TypeSafe의 Jev가 **GPT-6 Luna, GPT-6.1 Terra, GPT-6.1 Sol, GPT-6 Astra** 중 사용할 모델과 추론 깊이인 *effort*를 정합니다. Manual은 사용자가 정한 effort를, Jev Sol과 Jev Astra는 사용자가 고른 모델을 유지합니다.
 
 목표는 필요한 품질을 확보하면서 코딩·검사·리뷰·수정에 드는 불필요한 토큰 사용을 줄이는 것입니다. 버튼 문구를 바꾸는 일과 최종 보안 리뷰에는 서로 다른 접근이 필요하니까요.
 
@@ -316,6 +316,7 @@ Kill switch는 Jev 호출 없이 선택 모델/high, shadow는 판단을 기록�
 
 | 자동 후보 | 주로 맡는 작업 | 선택 가능한 effort |
 | --- | --- | --- |
+| GPT-6.1 Terra | 이미지·도면 해석과 Blender/CAD 모델링·외형 수정 | low · medium · high · xhigh · max |
 | GPT-6 Luna | 결과를 쉽게 확인할 수 있는 작은 수정 | low · medium · high · xhigh · max |
 | GPT-6.1 Sol | 일반적인 구현과 디버깅 | low · medium · high · xhigh · max |
 | GPT-6 Astra | 아키텍처, 독립 최종 리뷰, 위험 중심 리뷰 | low · medium · high · xhigh · max |
@@ -360,7 +361,7 @@ flowchart TD
     J -->|제한된 판단 자료| T[TypeSafe 직접 API]
     T -->|모델과 effort 판단| J
     J -->|선택한 모델과 전체 실행 요청| R
-    R -->|공유 ChatGPT 세션| O[OpenAI: Luna / Sol / Astra]
+    R -->|공유 ChatGPT 세션| O[OpenAI: Luna / Terra / Sol / Astra]
     O -->|응답 스트림| R
     R -->|Jev 요청의 응답| J
     J -->|선택적 모델 표시와 응답| R

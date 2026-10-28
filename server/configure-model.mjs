@@ -14,7 +14,7 @@ export const JEV_MODEL = Object.freeze({
   listed: true,
   displayName: "Jev Codex Router by Auto",
   description:
-    "Jev selects GPT-6 Luna, GPT-6.1 Sol or GPT-6 Astra and the reasoning effort.",
+    "Jev selects GPT-6 Luna, GPT-6.1 Terra, GPT-6.1 Sol or GPT-6 Astra and the reasoning effort.",
   priority: 95,
   defaultEffort: "auto",
   reasoningLevels: [{ effort: "auto", description: "Auto" }],

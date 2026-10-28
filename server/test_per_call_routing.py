@@ -282,10 +282,10 @@ class PerCallEndToEnd(unittest.TestCase):
         sent = requests[0]
         reference = sent['state']['routing_reference']
         self.assertEqual(reference['status'], 'external_priors_not_local_calibration')
-        self.assertEqual(reference['checked_at'], '2026-10-01')
+        self.assertEqual(reference['checked_at'], '2026-10-27')
         studies = {study['id']: study for study in reference['studies']}
         self.assertTrue({'official_coding_start', 'official_effort', 'bug_hunt_20261001',
-                         'luna_rewrite', 'overthinking', 'verifier_limits'} <= studies.keys())
+                         'terra_61_visual', 'overthinking', 'verifier_limits'} <= studies.keys())
         self.assertIn('not fixed floors', studies['official_coding_start']['limit'])
         self.assertIn('not calibrated', ' '.join(reference['bounds']))
         effort_question = json.dumps(sent['questions']['effort'])
@@ -296,7 +296,7 @@ class PerCallEndToEnd(unittest.TestCase):
         self.assertIn('project-wide tokens', model_question)
         self.assertIn('Never skip required checks', model_question)
         self.assertLessEqual(len(json.dumps(reference, separators=(',', ':'))), 3000)
-        self.assertEqual(set(sent['questions']['model']['criteria']), {'luna', 'sol_61', 'astra'})
+        self.assertEqual(set(sent['questions']['model']['criteria']), {'luna', 'terra_61', 'sol_61', 'astra'})
         self.assertEqual(Edge.payloads[-1]['model'], 'gpt-6-luna')
         self.assertEqual(Edge.payloads[-1]['input'], history)
         self.assertNotIn('routing_reference', Edge.payloads[-1])
