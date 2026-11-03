@@ -122,6 +122,28 @@ class SmokeRecoveryHttp(unittest.TestCase):
                 self.assertEqual(result["status"], "completed")
         self.candidates.assert_not_called()
 
+    def test_fast_smoke_requires_reported_fast_service(self) -> None:
+        original_post = Edge.do_POST
+        for tier in ("priority", "fast", "default", None):
+            def native(edge: Edge) -> None:
+                events = fixture.COMPLETED.split(b'\n\n')
+                completed = json.loads(events[1][6:])
+                if tier is not None:
+                    completed["response"]["service_tier"] = tier
+                events[1] = b'data: ' + json.dumps(completed).encode()
+                with mock.patch.object(fixture, "COMPLETED", b'\n\n'.join(events)):
+                    original_post(edge)
+
+            with self.subTest(tier=tier), mock.patch.object(Edge, "do_POST", native):
+                output = io.StringIO()
+                if tier in ("priority", "fast"):
+                    with contextlib.redirect_stdout(output):
+                        smoke.main("jev/sol", "fast")
+                    self.assertEqual(json.loads(output.getvalue())["service_tier"], tier)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "did not confirm Fast service"):
+                        smoke.main("jev/sol", "fast")
+
     def test_smoke_fresh_quota_refusal_fails_without_external_execution(self) -> None:
         def limited(edge: Edge) -> None:
             Edge.payloads.append(json.loads(edge.rfile.read(int(edge.headers["Content-Length"]))))

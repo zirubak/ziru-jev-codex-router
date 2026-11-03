@@ -74,7 +74,7 @@ async function bundledMetadata(context) {
   'carrier metadata does not preserve the required context and Manual efforts');
   const catalogPath = join(context.directory, 'official-models.json');
   context.catalogData = JSON.stringify({ models: catalog.models });
-  context.config = `model = "${CARRIER}"\nmodel_catalog_json = ${JSON.stringify(catalogPath)}\ncli_auth_credentials_store = "file"\n[analytics]\nenabled = false\n[features]\nplugins = false\napps = false\nremote_plugin = false\nplugin_sharing = false\nrecommended_plugins = false\n`;
+  context.config = `model = "${CARRIER}"\nmodel_catalog_json = ${JSON.stringify(catalogPath)}\ncli_auth_credentials_store = "file"\n[analytics]\nenabled = false\n[features]\nfast_mode = true\nplugins = false\napps = false\nremote_plugin = false\nplugin_sharing = false\nrecommended_plugins = false\n`;
   await writeFile(catalogPath, context.catalogData, { mode: 0o600 });
   await writeFile(join(context.directory, 'config.toml'), context.config, { mode: 0o600 });
   return nativeVersion;
@@ -109,6 +109,9 @@ function verifyHttp(context, req, body) {
   const tools = body.tools?.length || body.input.some((item) => item.type === 'additional_tools' && item.tools?.length);
   requireContract(tools, 'canonical tool metadata was not preserved');
   requireContract(req.headers['x-openai-internal-codex-responses-lite'] === 'true', 'canonical Responses transport changed');
+  if (expected.serviceTier) requireContract(expected.serviceTier === 'default'
+    ? body.service_tier == null || body.service_tier === 'default'
+    : ['priority', 'fast'].includes(body.service_tier), 'native service tier changed');
   expected.received = true;
   context.httpRequests += 1;
 }
@@ -399,12 +402,12 @@ async function settings(session, threadId, mode, effort) {
     'nested settings notification changed read-only permissions');
 }
 
-async function turn(session, threadId, mode, effort, useCollaboration = true) {
+async function turn(session, threadId, mode, effort, useCollaboration = true, serviceTier) {
   const context = session.context;
   const marker = `JEV_CONTRACT_INPUT_${context.httpRequests + 1}`;
   const previous = context.history.get(threadId) ?? [];
   const collaborationMarker = useCollaboration && effort === 'xhigh' ? `JEV_COLLABORATION_${context.httpRequests + 1}` : null;
-  context.expected = { mode, effort, markers: [...previous, marker], collaborationMarker, received: false };
+  context.expected = { mode, effort, markers: [...previous, marker], collaborationMarker, serviceTier, received: false };
   const before = session.noticeSequence;
   const params = { threadId, input: [{ type: 'text', text: `${marker}. Synthetic compatibility check. Do not call tools.`, text_elements: [] }] };
   if (useCollaboration) params.collaborationMode = { mode: effort === 'xhigh' ? 'plan' : 'default',
@@ -432,6 +435,24 @@ async function recoveryTurn(session, threadId, mode) {
       && context.recoveryModelOutputs === 0, 'bare native recovery did not stop after the HTTP refusal');
     if (context.error) throw context.error;
   } finally { context.recoveries.delete(mode); }
+}
+
+async function fixedSpeed(session, threadId, mode) {
+  const native = session.bridge.nativeModels.get(mode === 'sol' ? CARRIER : 'gpt-6-astra');
+  if (!native?.serviceTiers?.some(tier => ['priority', 'fast'].includes(tier.id))) {
+    await turn(session, threadId, mode, 'max', false);
+    return;
+  }
+  await session.bridge.handle('thread/settings/update', { threadId, serviceTier: 'priority' });
+  await turn(session, threadId, mode, 'max', false, 'priority');
+  const fast = await session.bridge.handle('thread/resume', { threadId });
+  requireContract(['priority', 'fast'].includes(fast.serviceTier), 'fixed Fast setting did not survive resume');
+  verifyPermissions(fast);
+  await session.bridge.handle('thread/settings/update', { threadId, serviceTier: 'default' });
+  const standard = await session.bridge.handle('thread/resume', { threadId });
+  requireContract(standard.serviceTier == null || standard.serviceTier === 'default', 'fixed Standard setting did not persist');
+  await turn(session, threadId, mode, 'max', false, 'default');
+  session.context.checks.push(`fixed-${mode}-fast-settings-resume-standard-reset`);
 }
 
 async function exercise(context) {
@@ -489,7 +510,7 @@ async function exercise(context) {
     requireContract(fixed.model === `jev/${mode}` && fixed.modelProvider === `jev-router-${mode}`
       && fixed.reasoningEffort === 'max', 'persisted fixed thread lost Jev identity or effort after restart');
     verifyPermissions(fixed);
-    await turn(session, threadId, mode, 'max', false);
+    await fixedSpeed(session, threadId, mode);
     await session.bridge.handle('thread/settings/update', { threadId, model: CARRIER, effort: 'high' });
   }
   context.checks.push('fixed-restart-resume');

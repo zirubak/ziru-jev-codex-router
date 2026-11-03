@@ -218,3 +218,17 @@ native model and verify router-managed config is removed using `router status`.
 Do not delete credentials, logs, backups or the checkout until you have confirmed
 no remaining service references it. A failed installation restores its own
 transaction; never restore a whole old config over subsequent user edits.
+
+## Fixed-route Fast checks
+
+Sol and Astra default to Standard and accept an explicit `service_tier` of
+`fast` or `priority`; both request Fast serving. Other values except `default`
+are rejected before inference. Auto/Manual remain Standard-only. The native
+Desktop catalog controls whether the fixed-route Fast choice is advertised.
+
+Run `python3 server/smoke.py --route sol --speed fast` or substitute `astra` to
+verify an entitled live account. These requests may consume increased usage.
+The smoke validates both model identity and terminal served service tier. A
+health response, picker label or requested tier is insufficient. Full local
+protocol validation uses synthetic loopback responses and does not establish
+account entitlement, real latency, billing or visual Desktop behavior.

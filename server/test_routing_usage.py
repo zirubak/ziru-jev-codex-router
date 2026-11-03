@@ -7,6 +7,14 @@ import report_routing as report
 
 
 class Usage(unittest.TestCase):
+    def test_new_unconfirmed_fast_records_are_not_estimated_as_standard(self):
+        import datetime
+        entry = {"_at": datetime.datetime.now(), "model": j.ASTRA,
+                 "requested_speed": "priority", "served_speed": None, "speed": None}
+        result = report.summarize([entry], 1, dict.fromkeys(("lines", "out_of_window", "undated", "unparsable"), 0), "/synthetic")
+        self.assertEqual(result["cost"]["unpriced_turns"], 1)
+
+
     def test_sol_61_attempt_is_native_with_an_unknown_credit_rate(self) -> None:
         result = report.measured_usage([{"attempts": [{
             "model": "gpt-6.1-sol", "speed": "default",
