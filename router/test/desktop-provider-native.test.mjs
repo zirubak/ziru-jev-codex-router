@@ -7,7 +7,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { callerBaseUrl } from '../src/caller-auth.mjs';
-import { DesktopProviderBridge } from '../src/desktop-provider-bridge.mjs';
+import { DesktopProviderBridge, JevBridgeError } from '../src/desktop-provider-bridge.mjs';
 import { PrivateRouteState } from '../src/desktop-provider-state.mjs';
 
 const binary = process.env.JEV_DESKTOP_NATIVE_BINARY;
@@ -16,6 +16,8 @@ const nativeVersion = binary && catalog ? execFileSync(binary, ['--version'], { 
 const windowsByVersion = {
   'codex-cli 0.159.0-alpha.12.1': { unknown: 258400, carrier: 828400 },
   'codex-cli 0.160.0': { unknown: 245480, carrier: 828400 },
+  // Both windows measured against this native build (probe carrier; legacy scenario below).
+  'codex-cli 0.166.0-alpha.6': { unknown: 258400, carrier: 828400 },
 };
 
 function respond(res, model, number, compaction) {
@@ -88,7 +90,7 @@ async function startRouterRelay(t, directory, upstream) {
   throw new Error(`Fixture router did not start: ${errors}`);
 }
 
-async function fixture(t, { relay = false } = {}) {
+async function fixture(t, { relay = false, globalProvider = null } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'jev-native-pressure-'));
   const original = await readFile(catalog);
   const parsed = JSON.parse(original);
@@ -97,8 +99,8 @@ async function fixture(t, { relay = false } = {}) {
   // Use unchanged official metadata only. Real user catalog/config are read-only.
   const catalogData = JSON.stringify({ models: parsed.models });
   await writeFile(localCatalog, catalogData, { mode: 0o600 });
-  const config = `model = "gpt-6.1-sol"\nmodel_catalog_json = ${JSON.stringify(localCatalog)}\n`;
-  await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
+  // Written after the fixture server binds: the provider tables carry its port.
+  let config;
   const calls = [];
   const upstreamCalls = [];
   let relayBase;
@@ -137,6 +139,10 @@ async function fixture(t, { relay = false } = {}) {
     respond(res, body.model, calls.length, compaction);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}/v1`;
+  // A user-chosen default provider is a top-level key, so it precedes every table.
+  config = `model = "gpt-6.1-sol"\nmodel_catalog_json = ${JSON.stringify(localCatalog)}\n${globalProvider ? `model_provider = ${JSON.stringify(globalProvider)}\n` : ''}${providerTables(base)}`;
+  await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   try {
     if (relay) relayBase = await startRouterRelay(t, directory, `http://127.0.0.1:${server.address().port}/upstream/v1`);
   } catch (error) {
@@ -152,7 +158,22 @@ async function fixture(t, { relay = false } = {}) {
     assert.deepEqual(await readFile(catalog), original);
     await rm(directory, { recursive: true, force: true });
   });
-  return { directory, calls, upstreamCalls, provider: { name: 'Local fixture', base_url: `http://127.0.0.1:${server.address().port}/v1`, wire_api: 'responses', requires_openai_auth: false } };
+  return { directory, calls, upstreamCalls, provider: { name: 'Local fixture', base_url: base, wire_api: 'responses', requires_openai_auth: false } };
+}
+
+/**
+ * Native 0.166 reloads the user config when the bridge switches the global
+ * provider, so every provider it can pick must be defined there. The first four
+ * mirror the managed jev-desktop-recovery-providers block of a real install;
+ * the last two are ordinary non-Jev providers used by the legacy scenarios.
+ */
+function providerTables(base) {
+  const table = (id, headers = {}) => `[model_providers.${id}]\nname = "Local fixture"\nbase_url = ${JSON.stringify(base)}\nwire_api = "responses"\nrequires_openai_auth = false\n`
+    + (Object.keys(headers).length ? `[model_providers.${id}.http_headers]\n${Object.entries(headers).map(([key, value]) => `${key} = ${JSON.stringify(value)}`).join('\n')}\n` : '');
+  return [
+    ...['auto', 'manual', 'sol', 'astra'].map((mode) => table(`jev-router-${mode}`, { 'x-jev-desktop-recovery': 'required' })),
+    table('legacy-jev'), table('fixture-native'),
+  ].join('');
 }
 
 async function connect(context, args = ['app-server']) {
@@ -180,7 +201,8 @@ async function connect(context, args = ['app-server']) {
     if (pending.has(message.id)) {
       const entry = pending.get(message.id);
       pending.delete(message.id);
-      if (message.error) entry.reject(new Error(message.error.message));
+      // Same shape as connectDesktopBridge: the gate keys on error.data.
+      if (message.error) entry.reject(new JevBridgeError(message.error.code, message.error.message, message.error.data));
       else entry.resolve(message.result);
     } else {
       if (message.method === 'thread/settings/updated') {
@@ -231,7 +253,9 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
   const context = await fixture(t);
   const windows = windowsByVersion[nativeVersion];
   assert.ok(windows, `Unqualified native version: ${nativeVersion}`);
-  let connection = await connect(context);
+  // Native 0.166 only runs a chat whose provider is the global model_provider, so
+  // the bridge-less legacy scenario pins the legacy provider as the global one.
+  let connection = await connect(context, ['-c', 'model_provider="legacy-jev"', 'app-server']);
   try {
     const legacy = await connection.request('thread/start', {
       model: 'jev/manual', modelProvider: 'legacy-jev', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
@@ -242,40 +266,48 @@ test('native pressure reproduces unknown alias compaction; known metadata preser
     assert.ok(connection.notices.some((item) => item.compaction));
     assert.ok(connection.notices.some((item) => item.window === windows.unknown), JSON.stringify(connection.notices));
     context.calls.length = 0;
-    connection.notices.length = 0;
-    let started = await connection.bridge.handle('thread/start', { model: 'jev/manual', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never', config: { model_reasoning_effort: 'medium' } });
-    const threadId = started.thread.id;
-    for (const [model, effort] of [['jev/manual', 'low'], ['jev/manual', 'medium'], ['jev/manual', 'high'], ['jev/manual', 'xhigh'], ['jev/manual', 'max'], ['jev/auto', 'high']]) {
-      await connection.bridge.handle('thread/settings/update', { threadId, model, effort });
-      await connection.turn(connection.bridge.handle.bind(connection.bridge), {
-        threadId, collaborationMode: { mode: 'default', settings: { model, reasoning_effort: effort, developer_instructions: null } },
-      });
+    await connection.close();
+    connection = await connect(context);
+    // Native 0.166 fixes a chat's provider at creation, so each Jev mode gets its own chat.
+    const begin = (model, effort) => connection.bridge.handle('thread/start', { model, cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never', config: { model_reasoning_effort: effort } });
+    const settings = (model, effort) => ({ collaborationMode: { mode: 'default', settings: { model, reasoning_effort: effort, developer_instructions: null } } });
+    const manualId = (await begin('jev/manual', 'medium')).thread.id;
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
+      await connection.bridge.handle('thread/settings/update', { threadId: manualId, model: 'jev/manual', effort });
+      await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId: manualId, ...settings('jev/manual', effort) });
     }
+    // Moving that chat to another Jev mode must be refused without touching its route.
+    await assert.rejects(
+      connection.bridge.handle('thread/settings/update', { threadId: manualId, model: 'jev/auto', effort: 'high' }),
+      /cannot switch to jev\/auto/);
+    assert.equal(connection.bridge.state.read(manualId).model, 'jev/manual');
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId: manualId, ...settings('jev/manual', 'max') });
+    const threadId = (await begin('jev/auto', 'high')).thread.id;
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId, ...settings('jev/auto', 'high') });
     assert.deepEqual(context.calls.map(({ model, mode, effort, lite, additionalTools }) => ({ model, mode, effort, lite, additionalTools })), [
-      { model: 'gpt-6.1-sol', mode: 'manual', effort: 'low', lite: 'true', additionalTools: true },
-      { model: 'gpt-6.1-sol', mode: 'manual', effort: 'medium', lite: 'true', additionalTools: true },
-      { model: 'gpt-6.1-sol', mode: 'manual', effort: 'high', lite: 'true', additionalTools: true },
-      { model: 'gpt-6.1-sol', mode: 'manual', effort: 'xhigh', lite: 'true', additionalTools: true },
-      { model: 'gpt-6.1-sol', mode: 'manual', effort: 'max', lite: 'true', additionalTools: true },
+      ...['low', 'medium', 'high', 'xhigh', 'max', 'max'].map((effort) => ({ model: 'gpt-6.1-sol', mode: 'manual', effort, lite: 'true', additionalTools: true })),
       { model: 'gpt-6.1-sol', mode: 'auto', effort: 'high', lite: 'true', additionalTools: true },
     ]);
     assert.equal(connection.notices.some((item) => item.compaction), false);
     assert.ok(connection.notices.some((item) => item.window === windows.carrier), JSON.stringify(connection.notices));
     await connection.close();
     connection = await connect(context);
-    started = await connection.bridge.handle('thread/resume', { threadId });
+    const started = await connection.bridge.handle('thread/resume', { threadId });
     assert.equal(started.model, 'jev/auto');
     assert.equal(started.modelProvider, 'jev-router-auto');
     await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId });
     assert.equal(context.calls.at(-1).mode, 'auto');
     assert.equal(connection.notices.some((item) => item.compaction), false);
-    await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'high' });
+    // Leaving Jev for an official model is the same locked-provider refusal.
+    await assert.rejects(
+      connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'high' }),
+      /cannot switch to gpt-6\.1-sol/);
     await connection.close();
     connection = await connect(context);
-    started = await connection.bridge.handle('thread/resume', { threadId });
-    assert.equal(started.model, 'gpt-6.1-sol');
-    assert.equal(started.modelProvider, 'openai');
-    assert.equal(started.sandbox.type, 'readOnly');
+    const resumed = await connection.bridge.handle('thread/resume', { threadId });
+    assert.equal(resumed.model, 'jev/auto');
+    assert.equal(resumed.modelProvider, 'jev-router-auto');
+    assert.equal(resumed.sandbox.type, 'readOnly');
   } finally { await connection.close(); }
 });
 
@@ -329,36 +361,47 @@ test('native Plan selection survives settings notification and reaches HTTP for 
   } finally { await connection.close(); }
 });
 
-test('resumed official history keeps Plan selected after switching to Jev before a turn', {
+test('resumed official history keeps Plan selected and refuses a switch to Jev', {
   skip: !binary || !catalog, timeout: 90000,
 }, async (t) => {
   const context = await fixture(t);
-  let connection = await connect(context);
+  let connection = await connect(context, ['-c', 'features.code_mode_host=true', 'app-server']);
   try {
+    // An official chat cannot run a turn without credentials; injected history persists it.
     const started = await connection.bridge.handle('thread/start', {
-      model: 'gpt-6.1-sol', modelProvider: 'fixture-native', cwd: context.directory,
-      permissions: ':read-only', approvalPolicy: 'never',
-      config: { model_providers: { 'fixture-native': context.provider } },
+      model: 'gpt-6.1-sol', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
     });
     const threadId = started.thread.id;
-    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId });
+    await connection.bridge.handle('thread/inject_items', { threadId, items: [{
+      type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Synthetic official history. No inference requested.' }],
+    }] });
     await connection.close();
     connection = await connect(context, ['-c', 'features.code_mode_host=true', 'app-server']);
-    await connection.bridge.handle('thread/resume', {
-      threadId, config: { model_providers: { 'fixture-native': context.provider } },
-    });
-    await connection.bridge.handle('thread/settings/update', { threadId, model: 'jev/auto', effort: 'xhigh' });
+    const resumed = await connection.bridge.handle('thread/resume', { threadId });
+    assert.equal(resumed.modelProvider, 'openai');
+    const high = connection.nextSettings(threadId);
+    await connection.bridge.handle('thread/settings/update', { threadId, effort: 'high' });
+    assert.equal((await high).public.params.threadSettings.effort, 'high');
+    // Native 0.166 keeps the chat on its creation provider: Jev cannot take it over.
+    await assert.rejects(
+      connection.bridge.handle('thread/settings/update', { threadId, model: 'jev/auto', effort: 'xhigh' }),
+      /cannot switch to jev\/auto/);
+    // The refused attempt must leave an ordinary official chat fully usable.
+    const low = connection.nextSettings(threadId);
+    await connection.bridge.handle('thread/settings/update', { threadId, effort: 'low' });
+    assert.equal((await low).public.params.threadSettings.effort, 'low');
     connection.settings.length = 0;
     const requestsBeforePlan = context.calls.length;
     const observed = connection.nextSettings(threadId);
     await connection.bridge.handle('thread/settings/update', {
       threadId, collaborationMode: { mode: 'plan', settings: {
-        model: 'jev/auto', reasoning_effort: 'xhigh', developer_instructions: null,
+        model: 'gpt-6.1-sol', reasoning_effort: 'xhigh', developer_instructions: null,
       } },
     });
     const notice = await observed;
     assert.equal(notice.public.params.threadSettings.collaborationMode.mode, 'plan');
-    assert.equal(notice.public.params.threadSettings.collaborationMode.settings.model, 'jev/auto');
+    assert.equal(notice.public.params.threadSettings.collaborationMode.settings.model, 'gpt-6.1-sol');
+    assert.equal(notice.public.params.threadSettings.modelProvider, 'openai');
     await connection.bridge.handle('thread/read', { threadId, includeTurns: false });
     assert.equal(context.calls.length, requestsBeforePlan, 'Choosing Plan must not send a model request');
     assert.ok(connection.settings.every(entry => entry.public.params.threadSettings.collaborationMode.mode === 'plan'));
@@ -398,23 +441,29 @@ test('native effort-only updates keep Jev model identity in Desktop settings not
         assert.equal(context.calls.at(-1).mode, mode);
         assert.equal(context.calls.at(-1).effort, effort);
       }
-      await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'high' });
+      // Leaving Jev is refused under native 0.166; the chat keeps its Jev route.
+      await assert.rejects(
+        connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'high' }),
+        /cannot switch to gpt-6\.1-sol/);
       const resumed = await connection.bridge.handle('thread/resume', { threadId });
-      assert.equal(resumed.model, 'gpt-6.1-sol');
-      assert.equal(resumed.modelProvider, 'openai');
-      // Rebind already applies high; only an actual subsequent setting change
-      // guarantees the native notification whose pass-through we check here.
-      const restored = connection.nextSettings(threadId);
-      await connection.bridge.handle('thread/settings/update', { threadId, effort: 'medium' });
-      const official = await restored;
-      assert.deepEqual(official.public, official.raw);
-      assert.equal(official.public.params.threadSettings.model, 'gpt-6.1-sol');
-      assert.equal(official.public.params.threadSettings.modelProvider, 'openai');
+      assert.equal(resumed.model, model);
+      assert.equal(resumed.modelProvider, `jev-router-${mode}`);
     }
+    // An official chat's own notifications stay byte-for-byte native.
+    const official = await connection.bridge.handle('thread/start', {
+      model: 'gpt-6.1-sol', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
+    });
+    await connection.bridge.handle('thread/settings/update', { threadId: official.thread.id, effort: 'high' });
+    const observed = connection.nextSettings(official.thread.id);
+    await connection.bridge.handle('thread/settings/update', { threadId: official.thread.id, effort: 'medium' });
+    const notice = await observed;
+    assert.deepEqual(notice.public, notice.raw);
+    assert.equal(notice.public.params.threadSettings.model, 'gpt-6.1-sol');
+    assert.equal(notice.public.params.threadSettings.modelProvider, 'openai');
   } finally { await connection.close(); }
 });
 
-test('bundled native settings accept official Ultra after Jev with unchanged notifications', {
+test('bundled native settings accept official Ultra with unchanged notifications; a Jev chat cannot leave Jev', {
   skip: !binary || !catalog, timeout: 90000,
 }, async (t) => {
   const context = await fixture(t);
@@ -424,33 +473,38 @@ test('bundled native settings accept official Ultra after Jev with unchanged not
       model: 'jev/manual', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
     });
     const threadId = started.thread.id;
-    // Exercise the actual local HTTP carrier before returning to native settings.
+    // Exercise the actual local HTTP carrier, then try to leave Jev for the official model.
     await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId, effort: 'medium' });
     assert.equal(context.calls.at(-1).mode, 'manual');
-    await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'max' });
-    const observed = connection.nextSettings(threadId);
+    await assert.rejects(
+      connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'ultra' }),
+      /cannot switch to gpt-6\.1-sol/);
+    assert.equal(connection.bridge.state.read(threadId).model, 'jev/manual');
+    // Official Ultra belongs to official chats, created as such in 0.166.
+    const official = await connection.bridge.handle('thread/start', {
+      model: 'gpt-6.1-sol', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
+    });
+    const observed = connection.nextSettings(official.thread.id);
     const [notice] = await Promise.all([
-      observed, connection.bridge.handle('thread/settings/update', { threadId, effort: 'ultra' }),
+      observed, connection.bridge.handle('thread/settings/update', { threadId: official.thread.id, effort: 'ultra' }),
     ]);
     assert.deepEqual(notice.public, notice.raw);
     assert.equal(notice.raw.params.threadSettings.effort, 'ultra');
     assert.equal(notice.raw.params.threadSettings.modelProvider, 'openai');
-    assert.equal(connection.bridge.state.read(threadId).effort, 'ultra');
-    await connection.bridge.handle('thread/settings/update', { threadId, model: 'jev/manual', effort: 'medium' });
-    await connection.bridge.handle('thread/settings/update', { threadId, model: 'gpt-6.1-sol', effort: 'ultra' });
-    assert.equal(connection.bridge.state.read(threadId).effort, 'ultra');
     // No authenticated official turn is sent; this checks native settings only.
     assert.equal(context.calls.length, 1);
   } finally { await connection.close(); }
 });
 
-
+// A chat created under the pre-bridge provider is bound to it for good in native 0.166,
+// so migrating it to a bridge provider is refused instead of rerouted.
 for (const historical of ['auto', 'manual']) {
 for (const selected of ['auto', 'manual']) {
-test(`legacy ${historical} compaction and ${selected} next turn complete through the actual router`, {
+test(`legacy ${historical} chat refuses a switch to ${selected} under native 0.166 and stays native`, {
   skip: !binary || !catalog, timeout: 90000,
 }, async (t) => {
-  const context = await fixture(t, { relay: true });
+  // The user's own default provider is the legacy one, so the legacy chat is runnable.
+  const context = await fixture(t, { globalProvider: 'legacy-jev' });
   const connection = await connect(context);
   try {
     const legacy = await connection.request('thread/start', {
@@ -460,24 +514,38 @@ test(`legacy ${historical} compaction and ${selected} next turn complete through
     });
     await connection.turn(connection.request, { threadId: legacy.thread.id, effort: 'high' });
     context.calls.length = 0;
-    await connection.bridge.handle('thread/settings/update', {
-      threadId: legacy.thread.id, model: `jev/${selected}`, effort: 'high',
-    });
-    await connection.turn(connection.bridge.handle.bind(connection.bridge), {
-      threadId: legacy.thread.id, ...(selected === 'manual' ? { effort: 'low' } : {}),
-    });
+    await assert.rejects(
+      connection.bridge.handle('thread/settings/update', {
+        threadId: legacy.thread.id, model: `jev/${selected}`, effort: 'high',
+      }),
+      new RegExp(`cannot switch to jev/${selected}`));
+    assert.equal(context.calls.length, 0, 'A refused switch must not send a model request');
+    // The refusal restored the user's default provider; the chat still runs natively.
+    await connection.turn(connection.request, { threadId: legacy.thread.id, effort: 'high' });
     assert.ok(context.calls.length > 0);
-    assert.equal(context.calls[0].path, '/v1/responses');
-    assert.equal(context.calls[0].terminalType, 'message');
-    assert.equal(context.upstreamCalls.length, 2);
-    assert.deepEqual(context.upstreamCalls.map(call => call.model), [`jev-${selected}`, `jev-${selected}`]);
-    assert.equal(connection.bridge.state.read(legacy.thread.id).phase, 'confirmed');
-    if (selected === 'manual') assert.equal(context.upstreamCalls[0].selection.user_effort, 'low');
-    assert.deepEqual(context.calls.map(({ model, mode, compaction }) => ({ model, mode, compaction })), [
-      { model: `jev/${historical}`, mode: selected, compaction: true },
-      { model: 'gpt-6.1-sol', mode: selected, compaction: false },
-    ]);
+    assert.equal(context.calls[0].mode, undefined, 'The legacy provider carries no Jev selection header');
   } finally { await connection.close(); }
 });
 }
 }
+
+// An explicit top-level model_provider (here the built-in openai) is a user choice. The
+// bridge must write it back after a switch, never delete it; the fixture's cleanup also
+// asserts config.toml is byte-identical to what it started with.
+test('a Jev turn restores an explicit user model_provider instead of deleting it', {
+  skip: !binary || !catalog, timeout: 90000,
+}, async (t) => {
+  const context = await fixture(t, { globalProvider: 'openai' });
+  const connection = await connect(context);
+  try {
+    const started = await connection.bridge.handle('thread/start', {
+      model: 'jev/manual', cwd: context.directory, permissions: ':read-only', approvalPolicy: 'never',
+    });
+    await connection.turn(connection.bridge.handle.bind(connection.bridge), { threadId: started.thread.id, effort: 'medium' });
+    assert.equal(context.calls.at(-1).mode, 'manual');
+    const layers = await connection.request('config/read', { includeLayers: true });
+    const user = layers.layers.find((layer) => layer.name.type === 'user');
+    assert.equal(user.config.model_provider, 'openai', 'the explicit key must survive the switch');
+    assert.equal(layers.config.model_provider, 'openai');
+  } finally { await connection.close(); }
+});

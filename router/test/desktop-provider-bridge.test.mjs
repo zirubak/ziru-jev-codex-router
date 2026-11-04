@@ -288,14 +288,17 @@ test('native callbacks with colliding IDs bypass thread queues and preserve auth
   child.emit('exit', 0);
 });
 
-test('native app-server preserves official config and confirms round-trip provider switches', {
+test('native app-server preserves official config; chats keep their provider across restarts and cannot cross it', {
   skip: !process.env.JEV_DESKTOP_NATIVE_BINARY || !process.env.JEV_DESKTOP_NATIVE_CATALOG,
   timeout: 90000,
 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jev-desktop-bridge-'));
   const catalog = join(directory, 'official-catalog.json');
   await writeFile(catalog, JSON.stringify({ models: JSON.parse(await readFile(process.env.JEV_DESKTOP_NATIVE_CATALOG, 'utf8')).models }));
-  const config = `model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = ${JSON.stringify(catalog)}\n`;
+  // Native 0.166 reloads this file whenever the bridge switches the global provider, so
+  // it carries the same four provider tables a real install keeps in its managed block.
+  const tables = ['auto', 'manual', 'sol', 'astra'].map((mode) => `[model_providers.jev-router-${mode}]\nname = "Jev Router"\nbase_url = "http://127.0.0.1:9/v1"\nwire_api = "responses"\nrequires_openai_auth = false\n[model_providers.jev-router-${mode}.http_headers]\nx-jev-desktop-recovery = "required"\n`).join('');
+  const config = `model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = ${JSON.stringify(catalog)}\n${tables}`;
   await writeFile(join(directory, 'config.toml'), config, { mode: 0o600 });
   const manifest = join(directory, 'bridge.json');
   const app = resolve(process.env.JEV_DESKTOP_NATIVE_BINARY, '../../../../../../..');
@@ -306,25 +309,42 @@ test('native app-server preserves official config and confirms round-trip provid
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
   const launch = () => spawn(process.execPath, [fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)), 'app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
-  let child = launch();
-  let client = rpcClient(child.stdin, child.stdout);
-  try {
+  const open = async () => {
+    const child = launch();
+    const client = rpcClient(child.stdin, child.stdout);
     await client.call('initialize', { clientInfo: { name: 'jev_bridge_test', version: '1' }, capabilities: { experimentalApi: true } });
     client.notify('initialized');
+    return { child, client };
+  };
+  let { child, client } = await open();
+  try {
     const models = await client.call('model/list');
     assert.deepEqual(models.data.filter((m) => m.model.startsWith('jev/')).map((m) => m.model), ['jev/auto', 'jev/manual', 'jev/sol', 'jev/astra']);
+    const persist = (threadId, text) => client.call('thread/inject_items', { threadId, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text }] }] });
     const started = await client.call('thread/start', { model: 'gpt-6.1-sol', cwd: directory, approvalPolicy: 'never', permissions: ':read-only' });
     assert.equal(started.modelProvider, 'openai');
     assert.equal(started.sandbox.type, 'readOnly', JSON.stringify({ sandbox: started.sandbox, profile: started.activePermissionProfile }));
-    const threadId = started.thread.id;
-    await client.call('thread/inject_items', { threadId, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Synthetic provider routing fixture. No inference requested.' }] }] });
-    for (const [model, effort, expected] of [['jev/auto', 'high', 'jev-router-auto'], ['jev/manual', 'max', 'jev-router-manual'], ['jev/sol', 'high', 'jev-router-sol'], ['jev/astra', 'max', 'jev-router-astra'], ['gpt-6.1-sol', 'high', 'openai']]) {
-      await client.call('thread/settings/update', { threadId, model, effort });
-      const resumed = await client.call('thread/resume', { threadId });
+    const officialId = started.thread.id;
+    await persist(officialId, 'Synthetic provider routing fixture. No inference requested.');
+    // Native 0.166 fixes a chat's provider at creation: crossing it is refused, not rerouted.
+    await assert.rejects(client.call('thread/settings/update', { threadId: officialId, model: 'jev/auto', effort: 'high' }), /cannot switch to jev\/auto/);
+    const stillOfficial = await client.call('thread/resume', { threadId: officialId });
+    assert.equal(stillOfficial.model, 'gpt-6.1-sol');
+    assert.equal(stillOfficial.modelProvider, 'openai');
+    // Each Jev mode gets its own chat; resuming it switches the global provider only for the resume.
+    const jevChats = [];
+    for (const [model, effort, expected] of [['jev/auto', 'high', 'jev-router-auto'], ['jev/manual', 'max', 'jev-router-manual'], ['jev/sol', 'high', 'jev-router-sol'], ['jev/astra', 'max', 'jev-router-astra']]) {
+      const chat = await client.call('thread/start', { model, cwd: directory, approvalPolicy: 'never', permissions: ':read-only', config: { model_reasoning_effort: effort } });
+      assert.equal(chat.model, model);
+      assert.equal(chat.modelProvider, expected);
+      await persist(chat.thread.id, `Synthetic ${model} fixture. No inference requested.`);
+      const resumed = await client.call('thread/resume', { threadId: chat.thread.id });
       assert.equal(resumed.model, model);
       assert.equal(resumed.modelProvider, expected);
       assert.equal(resumed.reasoningEffort, effort);
       assert.equal(resumed.sandbox.type, 'readOnly');
+      jevChats.push({ model, effort, expected, threadId: chat.thread.id });
+      assert.equal(await readFile(join(directory, 'config.toml'), 'utf8'), config, 'the global provider is restored after every switch');
     }
     const written = await client.call('config/batchWrite', { edits: [
       { keyPath: 'model', value: 'jev/manual', mergeStrategy: 'replace' },
@@ -332,20 +352,19 @@ test('native app-server preserves official config and confirms round-trip provid
     ] });
     assert.equal(written.status, 'okOverridden');
     assert.equal(await readFile(join(directory, 'config.toml'), 'utf8'), config);
-    await client.call('thread/settings/update', { threadId, model: 'jev/manual', effort: 'max' });
-    await client.call('thread/inject_items', { threadId, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Second synthetic fixture item.' }] }] });
     client.close();
     child.kill('SIGTERM');
     await new Promise((resolve) => child.once('exit', resolve));
-    child = launch();
-    client = rpcClient(child.stdin, child.stdout);
-    await client.call('initialize', { clientInfo: { name: 'jev_bridge_test', version: '1' }, capabilities: { experimentalApi: true } });
-    client.notify('initialized');
-    const reopened = await client.call('thread/resume', { threadId });
-    assert.equal(reopened.model, 'jev/manual');
-    assert.equal(reopened.modelProvider, 'jev-router-manual');
-    assert.equal(reopened.reasoningEffort, 'max');
-    assert.equal(reopened.sandbox.type, 'readOnly');
+    ({ child, client } = await open());
+    for (const { model, effort, expected, threadId } of jevChats) {
+      const reopened = await client.call('thread/resume', { threadId });
+      assert.equal(reopened.model, model);
+      assert.equal(reopened.modelProvider, expected);
+      assert.equal(reopened.reasoningEffort, effort);
+      assert.equal(reopened.sandbox.type, 'readOnly');
+    }
+    const reopenedOfficial = await client.call('thread/resume', { threadId: officialId });
+    assert.equal(reopenedOfficial.modelProvider, 'openai');
     assert.equal(await readFile(join(directory, 'config.toml'), 'utf8'), config);
   } finally {
     client.close();
