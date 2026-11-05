@@ -17,10 +17,12 @@ const PRESSURE_TOKENS = 319852;
 const MIN_CONTEXT = 740000;
 const NETWORK_PROFILE = '(version 1)(allow default)(deny network*)(allow network-outbound (remote ip "localhost:*"))';
 
-function nativeCommand(binary, args) {
+function nativeCommand(binary, args, overrides = []) {
+  // Top-level native flags such as -c must precede the subcommand.
+  const full = [...overrides, ...args];
   return process.platform === 'darwin'
-    ? { file: '/usr/bin/sandbox-exec', args: ['-p', NETWORK_PROFILE, binary, ...args] }
-    : { file: binary, args };
+    ? { file: '/usr/bin/sandbox-exec', args: ['-p', NETWORK_PROFILE, binary, ...full] }
+    : { file: binary, args: full };
 }
 
 async function waitForProcessGroupRetirement(processGroup) {
@@ -41,6 +43,17 @@ async function waitForProcessGroupRetirement(processGroup) {
 
 function failure(reason) {
   return new Error(`Jev Desktop compatibility: ${reason}. Keep Jev disabled for this app build and update the router.`);
+}
+
+/**
+ * Keep native's structured error for the provider bridge, but name only a
+ * sanitized code and kind: native message text is never exposed.
+ */
+function rejection(method, error) {
+  const code = Number.isSafeInteger(error.code) ? error.code : undefined;
+  const kind = typeof error.data?.type === 'string' && /^[A-Za-z]{1,60}$/.test(error.data.type) ? error.data.type : null;
+  const detail = code === undefined ? '' : ` (${code}${kind ? ` ${kind}` : ''})`;
+  return Object.assign(failure(`native ${method} request was rejected${detail}`), { code, data: error.data });
 }
 
 function requireContract(condition, reason) {
@@ -190,7 +203,8 @@ export function startQualificationResponderForTests(context) {
 }
 
 class NativeSession {
-  constructor(context) {
+  /** `overrides` are top-level native flags, used only to pin a bare recovery session's global provider. */
+  constructor(context, overrides = []) {
     this.context = context;
     this.sequence = 0;
     this.pending = new Map();
@@ -200,7 +214,9 @@ class NativeSession {
     this.buffer = '';
     const state = context.createPrivateRouteState(join(context.directory, 'private-routes'));
     this.bridge = new DesktopProviderBridge({ request: this.request.bind(this), provider: context.provider, state });
-    const command = context.nativeCommand(context.binary, ['app-server']);
+    const command = overrides.length
+      ? context.nativeCommand(context.binary, ['app-server'], overrides)
+      : context.nativeCommand(context.binary, ['app-server']);
     this.child = spawn(command.file, command.args, { env: context.env, cwd: context.directory,
       detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'ignore'] });
     this.exited = new Promise((resolve) => { this.resolveExit = resolve; });
@@ -259,7 +275,7 @@ class NativeSession {
       this.pending.delete(message.id);
       if (message.error) {
         if (message.error.code === -32601) pending.reject(new DesktopContractMismatch(`native ${pending.method} method is unavailable`));
-        else pending.reject(failure(`native ${pending.method} request was rejected`));
+        else pending.reject(rejection(pending.method, message.error));
       }
       else pending.resolve(message.result);
       return;
@@ -434,6 +450,36 @@ async function recoveryTurn(session, threadId, mode) {
   } finally { context.recoveries.delete(mode); }
 }
 
+/** Bare native without the bridge, with its global provider already on `jev-router-<mode>`. */
+async function bareSession(context, mode) {
+  if (context.error) throw context.error;
+  const bare = new NativeSession(context, ['-c', `model_provider="jev-router-${mode}"`]);
+  context.bareSessions.push(bare);
+  await bare.initialize();
+  return bare;
+}
+
+/**
+ * Ask the bridge to move a chat to another model, then report whether it moved.
+ * Native 0.166+ keeps a chat on its creation provider, so the bridge must refuse
+ * cleanly and leave the original route usable; an older native may allow the move.
+ * Either way a fresh resume must report exactly the route the outcome implies.
+ */
+async function moveRoute(session, threadId, update, keep, move) {
+  const refusal = await session.bridge.handle('thread/settings/update', { threadId, ...update }).then(() => null, (error) => error);
+  if (refusal) {
+    if (session.context.error) throw session.context.error;
+    requireContract(refusal.code === -32000 && /existing chat/.test(refusal.message), 'bridge did not refuse a provider change cleanly');
+  }
+  const expected = refusal ? keep : move;
+  const settled = await session.bridge.handle('thread/resume', { threadId });
+  requireContract(settled.model === expected.model && settled.modelProvider === expected.provider
+    && (expected.effort === undefined || settled.reasoningEffort === expected.effort),
+  'chat route after a provider change is not the one the outcome implies');
+  verifyPermissions(settled);
+  return !refusal;
+}
+
 async function exercise(context) {
   const connect = async () => {
     if (context.error) throw context.error;
@@ -464,15 +510,32 @@ async function exercise(context) {
   session = await connect();
   const previousRequests = context.httpRequests;
   for (const { threadId, mode } of threads) {
-    const bare = await session.request('thread/resume', { threadId });
-    requireContract(bare.model === CARRIER && bare.modelProvider === `jev-router-${mode}`, 'bare native could not reopen a persisted Jev thread');
-    verifyPermissions(bare);
+    const bare = await session.request('thread/resume', { threadId }).catch((error) => error);
+    if (bare instanceof Error) {
+      // Native 0.166+ refuses a chat whose provider differs from its global default, before any inference.
+      if (context.error) throw context.error;
+      requireContract(bare.data?.type === 'modelProviderMismatch' && bare.data.modelProvider === `jev-router-${mode}`,
+        'bare native refused a persisted Jev thread for an unexpected reason');
+    } else {
+      requireContract(bare.model === CARRIER && bare.modelProvider === `jev-router-${mode}`, 'bare native could not reopen a persisted Jev thread');
+      verifyPermissions(bare);
+    }
   }
   requireSafety(context.httpRequests === previousRequests, 'bare native recovery resume sent an inference request');
   context.checks.push('bare-native-recovery-resume');
-  // Native retries the real refusal for several seconds. Independent threads
-  // retain their own recovery guards while sharing that wait within startup's budget.
-  const recoveries = await Promise.allSettled(threads.map(({ threadId, mode }) => recoveryTurn(session, threadId, mode)));
+  // A crashed bridge can leave the global provider on a Jev route, which lets bare
+  // native reach the router. Pin each mode's global the same way and require the
+  // recovery refusal. Native retries it for several seconds, so the independent
+  // sessions share that wait within startup's budget.
+  const recoveries = await Promise.allSettled(threads.map(async ({ threadId, mode }) => {
+    const bare = await bareSession(context, mode);
+    const reopened = await bare.request('thread/resume', { threadId });
+    requireContract(reopened.model === CARRIER && reopened.modelProvider === `jev-router-${mode}`,
+      'bare native could not reopen a persisted Jev thread under its own provider');
+    verifyPermissions(reopened);
+    await recoveryTurn(bare, threadId, mode);
+  }));
+  await Promise.all(context.bareSessions.map((bare) => bare.close()));
   for (const result of recoveries) if (result.status === 'rejected') throw result.reason;
   context.checks.push('bare-native-recovery-http-guard');
   context.checks.push('recovery-registry-native-deep-merge');
@@ -490,32 +553,37 @@ async function exercise(context) {
       && fixed.reasoningEffort === 'max', 'persisted fixed thread lost Jev identity or effort after restart');
     verifyPermissions(fixed);
     await turn(session, threadId, mode, 'max', false);
-    await session.bridge.handle('thread/settings/update', { threadId, model: CARRIER, effort: 'high' });
+    await moveRoute(session, threadId, { model: CARRIER, effort: 'high' },
+      { model: `jev/${mode}`, provider: `jev-router-${mode}`, effort: 'max' }, { model: CARRIER, provider: 'openai' });
   }
-  context.checks.push('fixed-restart-resume');
-  await session.bridge.handle('thread/settings/update', { threadId: autoThread, model: CARRIER, effort: 'high' });
+  context.checks.push('fixed-restart-resume', 'fixed-jev-to-official-route');
+  const autoMoved = await moveRoute(session, autoThread, { model: CARRIER, effort: 'high' },
+    { model: 'jev/auto', provider: 'jev-router-auto', effort: 'high' }, { model: CARRIER, provider: 'openai' });
+  context.checks.push('jev-to-official-route');
+  // An official chat has to be on disk before a restart can reopen it unloaded; seeding
+  // its history is a local write and must not reach the model.
+  const seeded = context.httpRequests;
+  const officialStart = await session.bridge.handle('thread/start', { model: CARRIER, cwd: context.directory,
+    permissions: ':read-only', approvalPolicy: 'never' });
+  requireContract(officialStart.model === CARRIER && officialStart.modelProvider === 'openai', 'official thread start lost its provider');
+  verifyPermissions(officialStart);
+  const officialId = officialStart.thread.id;
+  await session.bridge.handle('thread/inject_items', { threadId: officialId,
+    items: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Synthetic persisted history.' }] }] });
+  requireSafety(context.httpRequests === seeded, 'seeding an official thread sent an inference request');
   await session.close();
   session = await connect();
-  const official = await session.bridge.handle('thread/resume', { threadId: autoThread });
-  requireContract(official.model === CARRIER && official.modelProvider === 'openai', 'official provider was not restored');
-  verifyPermissions(official);
-  context.checks.push('official-provider-restored');
-  for (const { threadId, mode } of threads.filter((item) => ['sol', 'astra'].includes(item.mode))) {
-    const fixedOfficial = await session.bridge.handle('thread/resume', { threadId });
-    requireContract(fixedOfficial.model === CARRIER && fixedOfficial.modelProvider === 'openai',
-      `fixed ${mode} thread did not restore the official provider`);
-    verifyPermissions(fixedOfficial);
-  }
-  context.checks.push('fixed-official-provider-restored');
-  await session.close();
-  session = await connect();
-  const saved = await session.request('thread/read', { threadId: autoThread, includeTurns: false });
+  const reopened = await session.bridge.handle('thread/resume', { threadId: autoThread });
+  requireContract(autoMoved ? reopened.model === CARRIER && reopened.modelProvider === 'openai'
+    : reopened.model === 'jev/auto' && reopened.modelProvider === 'jev-router-auto' && reopened.reasoningEffort === 'high',
+  'chat route changed across a restart');
+  verifyPermissions(reopened);
+  context.checks.push('route-after-restart');
+  const saved = await session.request('thread/read', { threadId: officialId, includeTurns: false });
   requireContract(saved.thread.status.type === 'notLoaded', 'persisted official thread remained loaded');
-  await session.bridge.handle('thread/settings/update', { threadId: autoThread, model: 'jev/auto', effort: 'high' });
-  const switched = await session.bridge.handle('thread/resume', { threadId: autoThread });
-  requireContract(switched.modelProvider === 'jev-router-auto', 'unloaded official thread did not switch to Jev');
-  verifyPermissions(switched);
-  context.checks.push('unloaded-official-provider-switch');
+  await moveRoute(session, officialId, { model: 'jev/auto', effort: 'high' },
+    { model: CARRIER, provider: 'openai' }, { model: 'jev/auto', provider: 'jev-router-auto', effort: 'high' });
+  context.checks.push('unloaded-official-to-jev-route');
   requireContract(context.windowCount >= context.httpRequests && context.minimumContextWindow >= MIN_CONTEXT,
     'native context pressure contract changed');
   requireSafety(context.compactions === 0, 'native context pressure caused automatic compaction');
@@ -527,13 +595,17 @@ export async function probeDesktopContract(nativeBinary, dependencies = {}) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jev-desktop-contract-')));
   const context = { binary: nativeBinary, directory, checks: [], httpRequests: 0, compactions: 0,
     windowCount: 0, minimumContextWindow: Infinity, history: new Map(), recoveries: new Map(), recoveryDeniedRequests: 0,
-    recoveryCompactRequests: 0, recoveryCompactionAttempts: 0, recoveryModelOutputs: 0 };
+    recoveryCompactRequests: 0, recoveryCompactionAttempts: 0, recoveryModelOutputs: 0, bareSessions: [] };
   context.nativeCommand = dependencies.nativeCommand ?? nativeCommand;
   context.createPrivateRouteState = dependencies.createPrivateRouteState
     ?? ((directory) => new PrivateRouteState(directory));
   // Do not inherit credentials, proxy overrides, plugins, or caller-controlled native flags.
   context.env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: directory, CODEX_HOME: directory, TMPDIR: directory, LANG: 'C', LC_ALL: 'C' };
-  context.fail = (error) => { context.error ??= error; context.session?.fail(context.error); };
+  context.fail = (error) => {
+    context.error ??= error;
+    context.session?.fail(context.error);
+    for (const bare of context.bareSessions) bare.fail(context.error);
+  };
   // Desktop's startup config read has a hard 30-second budget; leave room for
   // signature verification, artifact hashes, cleanup, and native initialization.
   const deadline = setTimeout(() => context.fail(failure('qualification exceeded the overall time limit')), 18000);
@@ -554,13 +626,17 @@ export async function probeDesktopContract(nativeBinary, dependencies = {}) {
     let cleanupError;
     try { await context.session?.close(); }
     catch (error) { cleanupError = error; }
+    for (const bare of context.bareSessions) {
+      try { await bare.close(); }
+      catch (error) { cleanupError ??= error; }
+    }
     if (context.server) {
       try {
         context.server.closeAllConnections();
         await new Promise((resolve) => context.server.close(resolve));
       } catch (error) { cleanupError ??= error; }
     }
-    if (!context.session || context.session.groupRetired) {
+    if ((!context.session || context.session.groupRetired) && context.bareSessions.every((bare) => bare.groupRetired)) {
       try { await rm(directory, { recursive: true, force: true }); }
       catch (error) { cleanupError ??= error; }
     }

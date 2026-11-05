@@ -108,6 +108,19 @@ test('probe reports native exit without exposing native output', async (t) => {
   });
 });
 
+test('probe names a rejected native request by code and kind without exposing native text', async (t) => {
+  const native = await fakeNative(t, `process.stdin.once('data', (chunk) => {
+    const { id } = JSON.parse(String(chunk).split('\\n')[0]);
+    console.log(JSON.stringify({ id, error: { code: -32600, message: 'PRIVATE-NATIVE-MESSAGE',
+      data: { type: 'modelProviderMismatch', modelProvider: 'PRIVATE-PROVIDER' } } }));
+  }); setInterval(() => {}, 1000);`);
+  await assert.rejects(probeDesktopContract(native.binary), (error) => {
+    assert.match(error.message, /native initialize request was rejected \(-32600 modelProviderMismatch\)/);
+    assert.doesNotMatch(error.message, /PRIVATE/);
+    return true;
+  });
+});
+
 test('probe hard-stops on an unsolicited HTTP request before any qualification turn', async (t) => {
   const native = await fakeNative(t, `
 const { readFile } = await import('node:fs/promises');
@@ -407,13 +420,15 @@ test('real native qualification covers synthetic routing, settings, context pres
   assert.ok(evidence.checks.includes('sol-efforts'));
   assert.ok(evidence.checks.includes('astra-efforts'));
   assert.ok(evidence.checks.includes('fixed-restart-resume'));
-  assert.ok(evidence.checks.includes('fixed-official-provider-restored'));
+  assert.ok(evidence.checks.includes('fixed-jev-to-official-route'));
+  assert.ok(evidence.checks.includes('jev-to-official-route'));
+  assert.ok(evidence.checks.includes('unloaded-official-to-jev-route'));
   assert.ok(evidence.checks.includes('nested-settings'));
   assert.ok(evidence.checks.includes('restart-resume'));
   assert.ok(evidence.checks.includes('bare-native-recovery-resume'));
   assert.ok(evidence.checks.includes('bare-native-recovery-http-guard'));
   assert.ok(evidence.checks.includes('recovery-registry-native-deep-merge'));
-  assert.ok(evidence.checks.includes('official-provider-restored'));
+  assert.ok(evidence.checks.includes('route-after-restart'));
   assert.ok(evidence.minimumContextWindow >= 740000);
   assert.ok(evidence.httpRequests >= 20);
   assert.equal(evidence.compactions, 0);
