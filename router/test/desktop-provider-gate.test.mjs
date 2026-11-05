@@ -29,7 +29,7 @@ function guardedNative({ initial = 'openai', failWrites = [], defined = ALL_JEV,
   const holds = [];
   const threads = new Map();
   const native = {
-    file: initial === 'openai' && !explicit ? null : initial, pin, writes: 0, layerMode: 'ok',
+    file: initial === 'openai' && !explicit ? null : initial, pin, writes: 0, version: 'sha256:fixture', layerMode: 'ok',
     get provider() { return this.pin ?? this.file ?? 'openai'; },
   };
   const hold = (method, match = () => true) => {
@@ -63,7 +63,7 @@ function guardedNative({ initial = 'openai', failWrites = [], defined = ALL_JEV,
     if (method === 'config/read') {
       if (failReads) throw new JevBridgeError(-32000, 'config unreadable');
       const owner = native.pin != null ? { type: 'sessionFlags' } : native.file != null ? { type: 'user', file: '/fixture/config.toml' } : null;
-      const user = { name: { type: 'user', file: '/fixture/config.toml' }, version: 'sha256:fixture', config: native.layerMode === 'nullProvider' ? { model_provider: null } : native.file != null ? { model_provider: native.file } : {} };
+      const user = { name: { type: 'user', file: '/fixture/config.toml' }, version: native.version, config: native.layerMode === 'nullProvider' ? { model_provider: null } : native.file != null ? { model_provider: native.file } : {} };
       const layers = [
         ...(native.pin != null ? [{ name: { type: 'sessionFlags' }, version: 'sha256:fixture', config: { model_provider: native.pin } }] : []),
         // `layerMode` models an incomplete config/read: no layer list, no user layer, or a user layer without its config.
@@ -85,8 +85,10 @@ function guardedNative({ initial = 'openai', failWrites = [], defined = ALL_JEV,
       const edits = method === 'config/value/write' ? [params] : params.edits;
       // Native parses key paths like TOML keys, so a quoted "model_provider" is the same key.
       const edit = edits.find((entry) => String(entry.keyPath).replace(/^"(.*)"$/, '$1') === 'model_provider');
+      if (params.expectedVersion != null && params.expectedVersion !== native.version) throw new JevBridgeError(-32000, 'version mismatch');
       if (edit) native.file = edit.value;
-      return { status: 'ok', version: `version-${native.writes}`, filePath: '/fixture/config.toml' };
+      native.version = `version-${native.writes}`;
+      return { status: 'ok', version: native.version, filePath: '/fixture/config.toml' };
     }
     if (method === 'thread/start') {
       const id = `thread-${threads.size + 1}`;
@@ -138,10 +140,45 @@ test('a Jev turn switches the native provider only after the mismatch, retries o
   assert.deepEqual(calls.map((call) => call.method).filter((method) => ['turn/start', 'config/batchWrite'].includes(method)),
     ['turn/start', 'config/batchWrite', 'turn/start', 'config/batchWrite']);
   assert.deepEqual(writes(calls)[0].params, {
+    expectedVersion: 'sha256:fixture',
     edits: [{ keyPath: 'model_provider', value: 'jev-router-manual', mergeStrategy: 'replace' }], reloadUserConfig: true,
   });
   assert.deepEqual(written(calls), ['jev-router-manual', null]);
+  assert.deepEqual(writes(calls).map((call) => call.params.expectedVersion), ['sha256:fixture', 'version-1']);
   assert.equal(native.provider, 'openai');
+});
+
+test('a concurrent provider edit is not overwritten by restoration or stranded repair', async () => {
+  const { bridge, calls, native } = setup();
+  const threadId = await jevThread(bridge);
+  let release;
+  let started;
+  const parked = new Promise((resolve) => { started = resolve; });
+  const pending = new Promise((resolve) => { release = resolve; });
+  const request = bridge.request;
+  let turns = 0;
+  bridge.request = async (method, params) => {
+    if (method === 'turn/start' && ++turns === 2) {
+      const result = await request(method, params);
+      started();
+      await pending;
+      return result;
+    }
+    const result = await request(method, params);
+    return result;
+  };
+  const turn = bridge.handle('turn/start', turnInput(threadId));
+  await parked;
+  native.file = 'azure';
+  native.version = 'external-version';
+  release();
+  assert.equal((await turn).turn.status, 'inProgress');
+  assert.equal(native.file, 'azure');
+  assert.deepEqual(writes(calls).at(-1).params.expectedVersion, 'version-1');
+  await bridge.settle();
+  assert.equal(native.file, 'azure');
+  assert.equal(bridge.stranded, null);
+  assert.equal(writes(calls).length, 2);
 });
 
 test('no configuration is written when the native provider already matches', async () => {
@@ -174,6 +211,24 @@ test('a mismatch that involves no Jev provider reaches Desktop unchanged', async
     (error) => error.code === -32600 && error.data?.type === 'modelProviderMismatch');
   assert.equal(writes(calls).length, 0);
   assert.equal(native.provider, 'azure');
+});
+
+test('an Azure chat resume preserves its native mismatch when no provider switch was requested', async () => {
+  const { bridge, threads } = setup();
+  threads.set('azure-thread', { model: 'gpt-6.1-sol', provider: 'azure', effort: 'high', loaded: true });
+  const mismatch = new JevBridgeError(-32600, 'native mismatch', {
+    type: 'modelProviderMismatch', modelProvider: 'azure', currentModelProvider: 'openai',
+  });
+  const request = bridge.request;
+  bridge.request = async (method, params) => {
+    if (method === 'thread/resume') throw mismatch;
+    return request(method, params);
+  };
+  bridge.routes.set('azure-thread', {
+    id: 'azure-thread', model: 'gpt-6.1-sol', modelProvider: 'azure', reasoningEffort: 'high',
+    status: { type: 'idle' }, path: '/fixture/azure-thread.jsonl', ephemeral: false, turns: [],
+  });
+  await assert.rejects(bridge.handle('thread/resume', { threadId: 'azure-thread' }), (error) => error === mismatch);
 });
 
 test('resuming a persisted Jev chat switches for the resume and restores afterwards', async () => {

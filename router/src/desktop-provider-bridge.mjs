@@ -164,16 +164,22 @@ export class DesktopProviderBridge {
     if (target != null && !config.providers.has(target)) {
       refuse(`${target} is not defined in the native configuration, so it cannot be selected; reinstall the Jev Desktop bridge to restore its provider block. No request was sent.`, { unsent: true });
     }
+    let alignedVersion;
     try {
-      try { await this.setProvider(target); }
-      catch (cause) { refuse(`could not align the native provider (${cause.code ?? 'native error'}); no request was sent.`, { unsent: true }); }
+      const aligned = await this.setProvider(target, config.version);
+      alignedVersion = aligned?.version;
+    } catch (cause) { refuse(`could not align the native provider (${cause.code ?? 'native error'}); no request was sent.`, { unsent: true }); }
+    try {
       try { return await this.request(method, params); }
       finally {
         if (target !== restore) {
-          try { await this.setProvider(restore); }
+          try {
+            if (typeof alignedVersion !== 'string') throw new Error('native config version is unavailable');
+            await this.setProvider(restore, alignedVersion);
+          }
           catch (cause) {
-            // Remember the value that must go back; the next section repairs it first.
-            this.stranded = { value: restore };
+            // Keep the temporary value as an ownership marker for a conditional repair.
+            this.stranded = { value: restore, temporary: target };
             this.warn(`Jev provider switch: could not restore the native default provider (${cause.code ?? 'native error'}).\n`);
           }
         }
@@ -203,8 +209,10 @@ export class DesktopProviderBridge {
   async settle() {
     if (!this.stranded) return;
     try {
-      const { file } = await this.inspect();
-      if (controlled(file)) await this.setProvider(this.stranded.value);
+      const { file, version } = await this.inspect();
+      if (file === this.stranded.temporary && this.stranded.value !== file) {
+        await this.setProvider(this.stranded.value, version);
+      }
     } catch (cause) { refuse(`the native default provider could not be restored (${cause.code ?? 'native error'}); no request was sent.`, { unsent: true }); }
     this.stranded = null;
     this.epoch += 1;
@@ -218,20 +226,23 @@ export class DesktopProviderBridge {
     // would clear the user's own default or declare a leftover Jev provider repaired.
     const stored = user?.config;
     // A present key must be a string: an explicit null is a misread, not an absent key.
-    if (stored == null || typeof stored !== 'object' || ('model_provider' in stored && typeof stored.model_provider !== 'string')) {
+    if (stored == null || typeof stored !== 'object' || ('model_provider' in stored && typeof stored.model_provider !== 'string')
+        || typeof user.version !== 'string') {
       throw new Error('config/read did not return a readable user layer');
     }
     const owner = result?.origins?.model_provider?.name?.type ?? null;
     return {
       providers: new Set(Object.keys(result?.config?.model_providers ?? {})),
       file: stored.model_provider ?? null,
+      version: user.version,
       // Layers below the user file (system) lose to a user-level write; the rest win.
       pinnedBy: owner != null && owner !== 'user' && owner !== 'system' ? owner : null,
     };
   }
 
-  setProvider(value) {
+  setProvider(value, expectedVersion) {
     return this.request('config/batchWrite', {
+      expectedVersion,
       edits: [{ keyPath: 'model_provider', value, mergeStrategy: 'replace' }], reloadUserConfig: true,
     });
   }
@@ -571,7 +582,7 @@ export class DesktopProviderBridge {
         // Native refuses before it touches the chat, and a refusal made before sending
         // never reached it, so the saved route is still true.
         if (pending) this.save(params.threadId, record.model, record.effort, 'confirmed', pending);
-        if (isProviderLocked(error)) refuse(lockedChat(model));
+        if (isProviderLocked(error) && providerId !== current.route.modelProvider) refuse(lockedChat(model));
         throw error;
       }
       if (isJev(model) || current.record || controlled(current.route.modelProvider)) {

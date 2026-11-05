@@ -309,15 +309,30 @@ test('native app-server preserves official config; chats keep their provider acr
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;
   const launch = () => spawn(process.execPath, [fileURLToPath(new URL('../bin/jev-desktop-codex', import.meta.url)), 'app-server'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
+  let child;
+  let client;
   const open = async () => {
-    const child = launch();
-    const client = rpcClient(child.stdin, child.stdout);
+    child = launch();
+    client = rpcClient(child.stdin, child.stdout);
     await client.call('initialize', { clientInfo: { name: 'jev_bridge_test', version: '1' }, capabilities: { experimentalApi: true } });
     client.notify('initialized');
     return { child, client };
   };
-  let { child, client } = await open();
+  const stop = async () => {
+    const stoppingClient = client;
+    const stoppingChild = child;
+    client = null;
+    child = null;
+    stoppingClient?.close();
+    if (stoppingChild && stoppingChild.exitCode === null && stoppingChild.signalCode === null) {
+      stoppingChild.kill('SIGTERM');
+      if (stoppingChild.exitCode === null && stoppingChild.signalCode === null) {
+        await new Promise((resolve) => stoppingChild.once('exit', resolve));
+      }
+    }
+  };
   try {
+    ({ child, client } = await open());
     const models = await client.call('model/list');
     assert.deepEqual(models.data.filter((m) => m.model.startsWith('jev/')).map((m) => m.model), ['jev/auto', 'jev/manual', 'jev/sol', 'jev/astra']);
     const persist = (threadId, text) => client.call('thread/inject_items', { threadId, items: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text }] }] });
@@ -352,9 +367,7 @@ test('native app-server preserves official config; chats keep their provider acr
     ] });
     assert.equal(written.status, 'okOverridden');
     assert.equal(await readFile(join(directory, 'config.toml'), 'utf8'), config);
-    client.close();
-    child.kill('SIGTERM');
-    await new Promise((resolve) => child.once('exit', resolve));
+    await stop();
     ({ child, client } = await open());
     for (const { model, effort, expected, threadId } of jevChats) {
       const reopened = await client.call('thread/resume', { threadId });
@@ -367,9 +380,7 @@ test('native app-server preserves official config; chats keep their provider acr
     assert.equal(reopenedOfficial.modelProvider, 'openai');
     assert.equal(await readFile(join(directory, 'config.toml'), 'utf8'), config);
   } finally {
-    client.close();
-    child.kill('SIGTERM');
-    await new Promise((resolve) => child.once('exit', resolve));
+    await stop();
     await rm(directory, { recursive: true, force: true });
   }
 });
